@@ -15,12 +15,12 @@ The on-shell **Quantum Moon** control surfaces **five** familiar planetary stops
 Click the **Quantum Moon** icon on the widget in the **top-right** of the shell to jump to a **random** planet. The button is the small moon control beside the selector ring. Click individual planets to swap to them.
 
 <p align="center">
-  <img src="docs/readme-screenshots/QMButton.png" alt="Quantum Moon button on the shell widget" width="420" />
+  <img src="docs/readme-screenshots/QMButton.png" alt="Quantum Moon button on the shell widget" width="220" />
 </p>
 
 ### Lock your world — Scout indicator
 
-Use your **scout** to take a picture **lock** the planet you are on. When locked, the scout indicator shows that the desktop will stay on that world.
+Use your **scout** to take a picture and **lock** the planet you are on. When locked, the scout indicator shows that the desktop will stay on that world.
 
 <p align="center">
   <img src="docs/readme-screenshots/ScoutIndicator.png" alt="Scout indicator showing a locked planet" width="280" />
