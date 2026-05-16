@@ -43,7 +43,7 @@ cd "$HOME/src/Quantum-Moon"
 git lfs pull
 ```
 
-If videos are missing (tiny pointer files instead of full `.mp4`), run `git lfs pull` again with `git-lfs` installed.
+If videos are missing (tiny pointer files instead of full `.mp4`), run `git lfs pull` again with `git-lfs` installed. **`install-quantum-moon.sh`** and login **`hypr-user.conf`** try an LFS pull automatically; **`qm-apply`** / **`qm-video-restart`** detect pointers and pull once before starting mpvpaper.
 
 **Maintainers** pushing large videos for the first time: after `git-lfs` is installed, run `./scripts/git-lfs-migrate-center-videos.sh` from the repo root, then push (see script output if history was rewritten).
 

@@ -16,5 +16,10 @@ ln -sfn "${QM}/scripts/qm-init-mvp-assets" "${BIN}/qm-init-mvp-assets"
 ln -sfn "${QM}/scripts/qm-video-watch" "${BIN}/qm-video-watch"
 ln -sfn "${QM}/scripts/qm-video-restart" "${BIN}/qm-video-restart"
 
+if command -v git-lfs >/dev/null 2>&1 && [[ -d "${REPO}/.git" ]]; then
+  echo "Pulling center.mp4 wallpapers (Git LFS)…"
+  (cd "${REPO}" && git lfs pull --include='quantum-moon/modes/*/wallpapers/center.mp4') || true
+fi
+
 echo "Wrote ${MARKER}"
 echo "Symlinked qm-apply, qm-random, qm-init-mvp-assets, qm-video-watch, qm-video-restart into ${BIN}"

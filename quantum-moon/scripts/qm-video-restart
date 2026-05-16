@@ -28,6 +28,13 @@ if ! command -v mpvpaper >/dev/null 2>&1; then
   exit 0
 fi
 
+if ! qm_ensure_center_video_file "${vid}"; then
+  echo "quantum-moon: ${vid} is not a playable video (Git LFS pointer?). From the repo root run:" >&2
+  echo "  git lfs install && git lfs pull" >&2
+  printf '%s\n' "lfs-pointer:${vid}" >"${STATE_DIR}/last-video.path"
+  exit 0
+fi
+
 mon=""
 for __retry in {1..20}; do
   mon="$(qm_center_monitor_name)"
@@ -45,7 +52,8 @@ sock="$(qm_video_sock)"
 mkdir -p "$(dirname "${sock}")"
 rm -f "${sock}"
 
-mpv_opts="--no-audio --loop-file=inf --really-quiet --hwdec=auto-safe --profile=gpu-hq --interpolation=no --input-ipc-server=${sock} --pause=no --background=#000000"
+# Avoid libcuda.so failures on machines without NVIDIA user-space drivers.
+mpv_opts="--no-audio --loop-file=inf --really-quiet --hwdec=auto --profile=fast --interpolation=no --input-ipc-server=${sock} --pause=no --background=#000000"
 
 LOG="${STATE_DIR}/mpvpaper.log"
 : >"${LOG}"
@@ -56,5 +64,13 @@ else
 fi
 echo $! >"$(qm_video_pidfile)"
 disown || true
+
+sleep 0.2
+if ! qm_mpvpaper_running; then
+  echo "quantum-moon: mpvpaper exited immediately; see ${LOG}" >&2
+  tail -n 20 "${LOG}" >&2 || true
+  printf '%s\n' "mpvpaper-exit:${abs}" >"${STATE_DIR}/last-video.path"
+  exit 1
+fi
 
 hyprctl hyprpaper reload >/dev/null 2>&1 || true

@@ -92,8 +92,11 @@ apply_slug() {
   sorted="$(echo "${monitors_json}" | jq -c 'sort_by(.x, .y)')"
 
   local use_center_video=0
-  if [[ -f "${mode_dir}/wallpapers/center.mp4" ]] && command -v mpvpaper >/dev/null 2>&1; then
+  local center_vid="${mode_dir}/wallpapers/center.mp4"
+  if command -v mpvpaper >/dev/null 2>&1 && qm_ensure_center_video_file "${center_vid}"; then
     use_center_video=1
+  elif [[ -f "${center_vid}" ]] && qm_is_lfs_pointer "${center_vid}"; then
+    echo "quantum-moon: skipping video wallpaper — ${center_vid} is still a Git LFS pointer (run: git lfs pull)" >&2
   fi
   local center_idx
   center_idx="$(qm_center_slot_index)"

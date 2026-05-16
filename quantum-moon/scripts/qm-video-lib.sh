@@ -13,6 +13,67 @@ qm_video_pidfile() {
   printf '%s' "${STATE_DIR}/mpvpaper.pid"
 }
 
+qm_repo_root() {
+  cd "${QM_ROOT}/.." && pwd
+}
+
+qm_is_lfs_pointer() {
+  local f="$1"
+  [[ -f "${f}" ]] || return 1
+  head -c 256 "${f}" 2>/dev/null | grep -q 'git-lfs.github.com'
+}
+
+qm_video_file_usable() {
+  local f="$1"
+  [[ -f "${f}" ]] || return 1
+  if qm_is_lfs_pointer "${f}"; then
+    return 1
+  fi
+  if file -b "${f}" 2>/dev/null | grep -qiE 'ISO Media|Matroska|WebM|AVI |video'; then
+    return 0
+  fi
+  local sz
+  sz="$(stat -c%s "${f}" 2>/dev/null || echo 0)"
+  [[ "${sz}" -gt 1048576 ]]
+}
+
+qm_lfs_pull_center_videos() {
+  local repo
+  repo="$(qm_repo_root)"
+  [[ -d "${repo}/.git" ]] || return 1
+  command -v git-lfs >/dev/null 2>&1 || return 1
+  (cd "${repo}" && git lfs pull --include='quantum-moon/modes/*/wallpapers/center.mp4')
+}
+
+qm_ensure_center_video_file() {
+  local vid="$1"
+  if qm_video_file_usable "${vid}"; then
+    return 0
+  fi
+  if qm_is_lfs_pointer "${vid}"; then
+    echo "quantum-moon: center.mp4 is a Git LFS pointer; pulling real videos…" >&2
+    qm_lfs_pull_center_videos || true
+  fi
+  qm_video_file_usable "${vid}"
+}
+
+qm_mpvpaper_running() {
+  local pf pid comm
+  pf="$(qm_video_pidfile)"
+  [[ -f "${pf}" ]] || return 1
+  pid="$(tr -d '[:space:]' <"${pf}")"
+  [[ -n "${pid}" ]] || return 1
+  kill -0 "${pid}" 2>/dev/null || return 1
+  comm="$(ps -p "${pid}" -o comm= 2>/dev/null || true)"
+  [[ "${comm}" == *mpvpaper* ]]
+}
+
+qm_current_slug() {
+  local state="${STATE_DIR}/current.json"
+  [[ -f "${state}" ]] || return 1
+  jq -r '.slug // empty' "${state}" 2>/dev/null
+}
+
 qm_sorted_monitors_json() {
   hyprctl monitors -j 2>/dev/null | jq -c 'sort_by(.x, .y)' || echo '[]'
 }

@@ -5,8 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=qm-video-lib.sh
 source "${SCRIPT_DIR}/qm-video-lib.sh"
 
+RESTART_SCRIPT="${SCRIPT_DIR}/qm-video-restart"
 last=""
-sock="$(qm_video_sock)"
+last_restart=0
+watchdog_tick=0
 
 sync_pause() {
   local want sock
@@ -24,11 +26,44 @@ sync_pause() {
   fi
 }
 
+maybe_restart_video() {
+  local slug vid now mode_dir
+  now="$(date +%s)"
+  # At most one automatic restart every 8s (avoids tight loops).
+  if (( now - last_restart < 8 )); then
+    return 0
+  fi
+
+  slug="$(qm_current_slug)" || return 0
+  mode_dir="${MODES_DIR}/${slug}"
+  vid="${mode_dir}/wallpapers/center.mp4"
+  [[ -f "${vid}" ]] || return 0
+  qm_ensure_center_video_file "${vid}" || return 0
+
+  if qm_mpvpaper_running && [[ -S "$(qm_video_sock)" ]]; then
+    return 0
+  fi
+
+  echo "quantum-moon: restarting center video (${slug})…" >&2
+  if "${RESTART_SCRIPT}" "${slug}"; then
+    last_restart="${now}"
+    last=""
+  fi
+}
+
 while true; do
   if ! hyprctl monitors -j >/dev/null 2>&1; then
     sleep 2
     continue
   fi
+
   sync_pause
+
+  watchdog_tick=$((watchdog_tick + 1))
+  if (( watchdog_tick >= 12 )); then
+    watchdog_tick=0
+    maybe_restart_video
+  fi
+
   sleep 0.25
 done
