@@ -4,38 +4,68 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 QM_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MODES_DIR="${QM_ROOT}/modes"
+DEFAULT_STARBG="${MODES_DIR}/starbg.png"
+OUT_W=1920
+OUT_H=1080
+SCALE_PERCENT=150
 
-if ! command -v convert >/dev/null 2>&1 && ! command -v magick >/dev/null 2>&1; then
-  python3 -c "from PIL import Image" 2>/dev/null || {
-    echo "Install ImageMagick (convert) or python-pillow for PNG generation." >&2
-    exit 1
-  }
+if command -v magick >/dev/null 2>&1; then
+  IM() { magick "$@"; }
+elif command -v convert >/dev/null 2>&1; then
+  IM() { convert "$@"; }
+else
+  echo "Install ImageMagick (magick or convert) to generate slot wallpapers from starbg.png." >&2
+  exit 1
 fi
 
-rand_hex() {
-  printf '%02x%02x%02x' $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256))
+resolve_starbg() {
+  local mode_dir="$1"
+  if [[ -f "${mode_dir}/starbg.png" ]]; then
+    printf '%s\n' "${mode_dir}/starbg.png"
+  elif [[ -f "${DEFAULT_STARBG}" ]]; then
+    printf '%s\n' "${DEFAULT_STARBG}"
+  else
+    echo "No starbg.png in ${mode_dir} or ${DEFAULT_STARBG}" >&2
+    return 1
+  fi
 }
 
-make_solid_png() {
-  local out="$1"
-  local hex="$2"
-  if command -v convert >/dev/null 2>&1; then
-    convert -size 1920x1080 "xc:#${hex}" "${out}"
-    return
-  fi
-  if command -v magick >/dev/null 2>&1; then
-    magick -size 1920x1080 "xc:#${hex}" "${out}"
-    return
-  fi
-  python3 -c "from PIL import Image; Image.new('RGB', (1920, 1080), '#${hex}').save('${out}')"
+crop_offset() {
+  local slug="$1" slot="$2" max="$3"
+  local n
+  n="$(printf '%s-%s' "${slug}" "${slot}" | cksum | awk '{print $1}')"
+  echo $(( n % (max + 1) ))
+}
+
+make_slot_from_starbg() {
+  local src="$1" out="$2" slug="$3" slot="$4"
+  local w h sw sh max_x max_y x y
+
+  read -r w h < <(IM "${src}" -format '%w %h' info:)
+  sw=$(( w * SCALE_PERCENT / 100 ))
+  sh=$(( h * SCALE_PERCENT / 100 ))
+  [[ "${sw}" -lt "${OUT_W}" ]] && sw="${OUT_W}"
+  [[ "${sh}" -lt "${OUT_H}" ]] && sh="${OUT_H}"
+
+  max_x=$(( sw - OUT_W ))
+  max_y=$(( sh - OUT_H ))
+  [[ "${max_x}" -lt 0 ]] && max_x=0
+  [[ "${max_y}" -lt 0 ]] && max_y=0
+
+  x="$(crop_offset "${slug}" "${slot}" "${max_x}")"
+  y="$(crop_offset "${slug}" "$((slot + 3))" "${max_y}")"
+
+  IM "${src}" -resize "${sw}x${sh}!" -crop "${OUT_W}x${OUT_H}+${x}+${y}" +repage "${out}"
 }
 
 while IFS= read -r -d '' d; do
+  slug="$(basename "${d}")"
+  src="$(resolve_starbg "${d}")"
   mkdir -p "${d}/wallpapers"
   for s in 0 1 2; do
-    make_solid_png "${d}/wallpapers/slot-${s}.png" "$(rand_hex)"
+    make_slot_from_starbg "${src}" "${d}/wallpapers/slot-${s}.png" "${slug}" "${s}"
   done
-  make_solid_png "${d}/logo.png" "$(rand_hex)"
+  echo "  ${slug}: slot-0..2 from $(basename "${src}")"
 done < <(find "${MODES_DIR}" -mindepth 1 -maxdepth 1 -type d -print0)
 
-echo "MVP assets generated under ${MODES_DIR}"
+echo "Done. Slot wallpapers under ${MODES_DIR}/*/wallpapers/ (logos were not modified)."

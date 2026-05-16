@@ -79,7 +79,7 @@ Each row is a full desktop (wallpapers + shell) with the **Quantum Moon** panel 
 
 ## Install
 
-Follow **[docs/installation-tutorial.md](docs/installation-tutorial.md)** step by step on **Arch Linux / CachyOS** (or another Arch-based distro with Hyprland). It covers cloning from **[github.com/atlazlp/Quantum-Moon](https://github.com/atlazlp/Quantum-Moon)** anywhere under `$HOME`, running `./install-caelestia.sh`, Quantum Moon path registration, MVP assets, Quickshell patches, and first `qm-apply`.
+Follow **[docs/installation-tutorial.md](docs/installation-tutorial.md)** step by step on **Arch Linux / CachyOS** (or another Arch-based distro with Hyprland). It covers cloning from **[github.com/atlazlp/Quantum-Moon](https://github.com/atlazlp/Quantum-Moon)** anywhere under `$HOME`, running `./install-caelestia.sh`, Quantum Moon path registration, optional `starbg` slot generation, Quickshell patches, and first `qm-apply`.
 
 After install: **[docs/post-install-reference.md](docs/post-install-reference.md)** (keyboard/timezone defaults, fewer-than-three monitors, shortcut overview).
 

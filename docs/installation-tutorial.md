@@ -1,6 +1,6 @@
 # Quantum Moon — installation tutorial
 
-This guide targets **Arch Linux / CachyOS** with **Hyprland**. You will install **Caelestia**, copy Quantum Moon’s Hypr and shell files into `$HOME/.config`, register the wallpaper tooling path, optionally refresh solid-color mode assets, apply **Quickshell patches**, and run `**qm-apply`** once.
+This guide targets **Arch Linux / CachyOS** with **Hyprland**. You will install **Caelestia**, copy Quantum Moon’s Hypr and shell files into `$HOME/.config`, register the wallpaper tooling path, optionally regenerate slot wallpapers from **`starbg.png`**, apply **Quickshell patches**, and run **`qm-apply`** once.
 
 I use **Brazilian Portuguese** defaults day to day — `**kb_layout = br`** (ABNT2) in `**caelestia/hypr-user-local.conf**` and São Paulo timezone on the host machine. If you are elsewhere, plan to switch **keyboard layout**, `**timedatectl` timezone**, and `**locale`** to match your region (see **[docs/post-install-reference.md](post-install-reference.md)**).
 
@@ -17,9 +17,9 @@ Install or have available:
 
 | Requirement                                               | Notes                                         |
 | --------------------------------------------------------- | --------------------------------------------- |
-| `base-devel`, `git`, `hyprland`, `jq`                     | Core toolchain                                |
+| `base-devel`, `git`, `git-lfs`, `hyprland`, `jq`          | `git-lfs` required for `center.mp4` wallpapers (§2) |
 | `yay` or another AUR helper                               | Required by `./install-caelestia.sh`          |
-| ImageMagick (`convert` / `magick`) **or** `python-pillow` | Only if you re-run `qm-init-mvp-assets` (§6)  |
+| ImageMagick (`magick` / `convert`)                        | Only if you re-run `qm-init-mvp-assets` (§6)  |
 | Network                                                   | For cloning upstream Caelestia and AUR builds |
 
 
@@ -29,15 +29,25 @@ The installer script also tries to install **polkit-gnome**, **foot**, **kitty**
 
 ## 2. Clone Quantum Moon
 
-Pick a permanent path under `**$HOME**` (examples use `**$HOME/src/Quantum-Moon**`):
+Center-monitor videos (`center.mp4` per mode) are stored with **Git LFS** so the repository can live on GitHub. After clone they still sit at the same paths, for example `quantum-moon/modes/timber-hearth/wallpapers/center.mp4` — nothing in `qm-apply` or mpvpaper changes.
+
+Install **git-lfs** once, enable it for your user, then clone:
 
 ```bash
+sudo pacman -S git-lfs
+git lfs install
+
 mkdir -p "$HOME/src"
 git clone https://github.com/atlazlp/Quantum-Moon.git "$HOME/src/Quantum-Moon"
 cd "$HOME/src/Quantum-Moon"
+git lfs pull
 ```
 
-All paths below assume `**cd**` into that directory.
+If videos are missing (tiny pointer files instead of full `.mp4`), run `git lfs pull` again with `git-lfs` installed.
+
+**Maintainers** pushing large videos for the first time: after `git-lfs` is installed, run `./scripts/git-lfs-migrate-center-videos.sh` from the repo root, then push (see script output if history was rewritten).
+
+All paths below assume `cd` into that directory.
 
 ---
 
@@ -107,23 +117,32 @@ For systemd user units that need `**$HOME/.local/bin**`, use an explicit line wi
 
 ---
 
-## 6. Mode wallpapers (MVP solids)
+## 6. Mode wallpapers (`starbg` cuts)
 
-The repo ships **solid-color** placeholders per mode under `**quantum-moon/modes/*/wallpapers/`** and `**logo.png**` per mode so `**qm-apply**` works immediately.
+The repository already ships per-mode assets under `quantum-moon/modes/<mode>/`: `wallpapers/slot-0.png` … `slot-2.png`, planet logos (`logo.png` / `logo-lq.png`), palettes, and optional `center.mp4`. You can run `qm-apply` without generating anything first.
 
-To **regenerate** random solids (overwrites those files):
+**`qm-init-mvp-assets`** is optional. It **only** rebuilds the three slot PNGs per mode by cropping from a starfield source:
+
+- `quantum-moon/modes/<mode>/starbg.png` if present, otherwise
+- shared `quantum-moon/modes/starbg.png`
+
+It uses **ImageMagick** (`magick` or `convert`), scales the source slightly, then crops three **1920×1080** views. It does **not** create or overwrite planet logos.
 
 ```bash
 qm-init-mvp-assets
 ```
 
+Use this when you replace `starbg.png` or want fresh slot crops. **`install-quantum-moon.sh` does not run this command.**
+
 ---
 
 ## 7. Optional center-monitor video (mpvpaper)
 
-Install **[mpvpaper](https://github.com/GhostNaN/mpvpaper)** (often from the AUR). For each mode, add `**wallpapers/center.mp4`** beside the slot PNGs. `**qm-apply**` starts or restarts mpvpaper for that clip; `**qm-video-watch**` (started from `**hypr-user.conf**` after `**qm-apply --persisted**`) pauses playback when the center output’s focused workspace has windows.
+Install **[mpvpaper](https://github.com/GhostNaN/mpvpaper)** (often from the AUR). Each mode can use `quantum-moon/modes/<mode>/wallpapers/center.mp4` beside the slot PNGs. In this repository those files are on **Git LFS** — use §2 (`git-lfs`, `git lfs pull`) so the real videos are present locally.
 
-If `**center.mp4**` is missing or mpvpaper is not installed, behavior falls back to hyprpaper only.
+`qm-apply` starts or restarts mpvpaper for that clip; `qm-video-watch` (started from `hypr-user.conf` after `qm-apply --persisted`) pauses playback when the center output’s focused workspace has windows.
+
+If `center.mp4` is missing or mpvpaper is not installed, behavior falls back to hyprpaper only.
 
 Re-run `**./scripts/install-quantum-moon.sh**` if you want `**qm-video-watch**` / `**qm-video-restart**` symlinked into `**$HOME/.local/bin**` for debugging.
 
