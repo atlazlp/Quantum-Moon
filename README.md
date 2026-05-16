@@ -2,13 +2,80 @@
 
 **[Quantum Moon](https://github.com/atlazlp/Quantum-Moon)** is a Hyprland desktop by **[atlazlp](https://github.com/atlazlp)**—a fan-made *Outer Wilds* homage built on **[Caelestia](https://github.com/caelestia-dots/caelestia)** (Quickshell shell) and **[Hyprland](https://github.com/hyprwm/Hyprland)**. I used it to learn **Arch Linux** and Wayland tiling while theming my daily driver.
 
-The on-shell **Quantum Moon** control surfaces **five** familiar planetary “stops” you can pick from the selector ring; **six** full **modes** in the repo cover every world that moon can visit across the solar system (including the last shore), each with its own palette and per-monitor wallpapers.
-
-Screenshots for this README live in **[docs/readme-screenshots/](docs/readme-screenshots/)**—add images there and link them from this file when you are ready.
-
 ## Spoiler warning (*Outer Wilds*)
 
 This setup uses *Outer Wilds* art, names, and motifs that **reveal major story and places**. *Outer Wilds* is a fantastic game, and the first playthrough is something you only get once—discovery is the point. **Play it before installing this theme** if you have not finished it and want to stay unspoiled.
+
+The on-shell **Quantum Moon** control surfaces **five** familiar planetary stops on the selector ring. **Six** full modes in the repo cover every world that moon can visit across the solar system, each with its own palette and per-monitor wallpapers.
+
+## Preview
+
+### Random planet — Quantum Moon button
+
+Click the **Quantum Moon** icon on the widget in the **top-right** of the shell to jump to a **random** planet. The button is the small moon control beside the selector ring. Click individual planets to swap to them.
+
+<p align="center">
+  <img src="docs/readme-screenshots/QMButton.png" alt="Quantum Moon button on the shell widget" width="420" />
+</p>
+
+### Lock your world — Scout indicator
+
+Use your **scout** to take a picture **lock** the planet you are on. When locked, the scout indicator shows that the desktop will stay on that world.
+
+<p align="center">
+  <img src="docs/readme-screenshots/ScoutIndicator.png" alt="Scout indicator showing a locked planet" width="280" />
+</p>
+
+If you leave the system **unlocked**, Quantum Moon can still **change planets when you are not looking**—for example while idle or when another trigger fires. Lock with the scout when you want a stable theme.
+
+### Five planetary stops
+
+Each row is a full desktop (wallpapers + shell) with the **Quantum Moon** panel beside it—the ring and controls you use to pick a world.
+
+#### Timber Hearth
+
+<table>
+<tr>
+<td width="72%"><img src="docs/readme-screenshots/Timber-Hearth_desktop.png" alt="Timber Hearth desktop" /></td>
+<td width="28%" valign="top"><img src="docs/readme-screenshots/Timber-Hearth_dash.png" alt="Timber Hearth Quantum Moon panel" width="100%" /></td>
+</tr>
+</table>
+
+#### Hourglass Twins
+
+<table>
+<tr>
+<td width="72%"><img src="docs/readme-screenshots/Hourglass-Twins_desktop.png" alt="Hourglass Twins desktop" /></td>
+<td width="28%" valign="top"><img src="docs/readme-screenshots/Hourglass-Twins_dash.png" alt="Hourglass Twins Quantum Moon panel" width="100%" /></td>
+</tr>
+</table>
+
+#### Giant's Deep
+
+<table>
+<tr>
+<td width="72%"><img src="docs/readme-screenshots/Giants-Deep_desktop.png" alt="Giant's Deep desktop" /></td>
+<td width="28%" valign="top"><img src="docs/readme-screenshots/Giants-Deep_dash.png" alt="Giant's Deep Quantum Moon panel" width="100%" /></td>
+</tr>
+</table>
+
+#### Brittle Hollow
+
+<table>
+<tr>
+<td width="72%"><img src="docs/readme-screenshots/Brittle-Hollow_desktop.png" alt="Brittle Hollow desktop" /></td>
+<td width="28%" valign="top"><img src="docs/readme-screenshots/Brittle-Hollow_dash.png" alt="Brittle Hollow Quantum Moon panel" width="100%" /></td>
+</tr>
+</table>
+
+#### Dark Bramble
+
+<table>
+<tr>
+<td width="72%"><img src="docs/readme-screenshots/Dark-Bramble_desktop.png" alt="Dark Bramble desktop" /></td>
+<td width="28%" valign="top"><img src="docs/readme-screenshots/Dark-Bramble-dash.png" alt="Dark Bramble Quantum Moon panel" width="100%" /></td>
+</tr>
+</table>
 
 ## Install
 
@@ -25,7 +92,7 @@ After install: **[docs/post-install-reference.md](docs/post-install-reference.md
 | [`quantum-moon/`](quantum-moon/) | Mode metadata, palettes, scripts (`qm-apply`, `qm-random`, optional video helpers) |
 | [`scripts/`](scripts/) | Installers, patch helper, backup |
 | [`extras/`](extras/) | Optional system-level snippets (e.g. keyd) |
-| [`docs/readme-screenshots/`](docs/readme-screenshots/) | Images for this README (you add them) |
+| [`docs/readme-screenshots/`](docs/readme-screenshots/) | README preview images (desktops, panels, QM button, scout) |
 | [`reference/bar-entries.stock.json`](reference/bar-entries.stock.json) | Stock Caelestia bar order reference |
 
 ## Optional scripts (not required for the tutorial)

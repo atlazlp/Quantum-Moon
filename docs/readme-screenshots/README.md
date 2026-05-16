@@ -1,7 +1,10 @@
-Drop screenshots here (PNG, JPEG, or WebP) and reference them from the root **`README.md`**, for example:
+Images referenced from the root **`README.md`**:
 
-```markdown
-![Desktop overview](docs/readme-screenshots/overview.png)
-```
+| Files | Role |
+|-------|------|
+| `*_desktop.png` | Full desktop per planet |
+| `*_dash.png` | Quantum Moon panel (shown beside desktop in README) |
+| `QMButton.png` | Random-planet control on the shell widget |
+| `ScoutIndicator.png` | Locked-planet scout indicator |
 
-Keep filenames short and lowercase-with-hyphens if you can. Large images are fine for GitHub; consider reasonable dimensions (for example 1920px wide) so the readme stays quick to load.
+Planet dash filenames use `_dash` except **Dark Bramble** (`Dark-Bramble-dash.png`).
