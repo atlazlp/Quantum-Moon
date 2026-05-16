@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+QM_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+pick="$(python3 "${SCRIPT_DIR}/qm-random-walk.py" pick)"
+exec "${SCRIPT_DIR}/qm-apply" "${pick}"

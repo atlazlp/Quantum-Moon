@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=qm-video-lib.sh
+source "${SCRIPT_DIR}/qm-video-lib.sh"
+
+slug="${1:-}"
+if [[ -z "${slug}" ]]; then
+  echo "usage: qm-video-restart <slug>" >&2
+  exit 1
+fi
+
+mkdir -p "${STATE_DIR}"
+printf '%s\n' "${slug}" >"${STATE_DIR}/last-video.slug"
+
+qm_video_stop
+mode_dir="${MODES_DIR}/${slug}"
+vid="${mode_dir}/wallpapers/center.mp4"
+if [[ ! -f "${vid}" ]]; then
+  printf '%s\n' "missing:${vid}" >"${STATE_DIR}/last-video.path"
+  exit 0
+fi
+
+if ! command -v mpvpaper >/dev/null 2>&1; then
+  echo "qm-video: mpvpaper not found (pacman/yay: mpvpaper). Install it for center video wallpaper." >&2
+  printf '%s\n' "no-mpvpaper" >"${STATE_DIR}/last-video.path"
+  exit 0
+fi
+
+mon=""
+for __retry in {1..20}; do
+  mon="$(qm_center_monitor_name)"
+  [[ -n "${mon}" ]] && break
+  sleep 0.06
+done
+[[ -n "${mon}" ]] || {
+  printf '%s\n' "no-monitor" >"${STATE_DIR}/last-video.path"
+  exit 0
+}
+
+abs="$(realpath "${vid}")"
+printf '%s\n' "${abs}" >"${STATE_DIR}/last-video.path"
+sock="$(qm_video_sock)"
+mkdir -p "$(dirname "${sock}")"
+rm -f "${sock}"
+
+mpv_opts="--no-audio --loop-file=inf --really-quiet --hwdec=auto-safe --profile=gpu-hq --interpolation=no --input-ipc-server=${sock} --pause=no --background=#000000"
+
+LOG="${STATE_DIR}/mpvpaper.log"
+: >"${LOG}"
+if command -v setsid >/dev/null 2>&1; then
+  setsid mpvpaper -l background -o "${mpv_opts}" "${mon}" "${abs}" </dev/null >>"${LOG}" 2>&1 &
+else
+  nohup mpvpaper -l background -o "${mpv_opts}" "${mon}" "${abs}" </dev/null >>"${LOG}" 2>&1 &
+fi
+echo $! >"$(qm_video_pidfile)"
+disown || true
+
+hyprctl hyprpaper reload >/dev/null 2>&1 || true

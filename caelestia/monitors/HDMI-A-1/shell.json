@@ -1,0 +1,8 @@
+{
+    "sidebar": {
+        "enabled": false
+    },
+    "dashboard": {
+        "enabled": false
+    }
+}

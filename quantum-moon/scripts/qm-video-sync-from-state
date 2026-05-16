@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root_file="${HOME}/.config/caelestia/quantum-moon-root"
+[[ -f "${root_file}" ]] || exit 0
+read -r QM < "${root_file}"
+[[ -n "${QM}" && -f "${QM}/scripts/qm-video-restart" ]] || exit 0
+state="${XDG_STATE_HOME:-${HOME}/.local/state}/quantum-moon/current.json"
+[[ -f "${state}" ]] || exit 0
+slug="$(jq -r '.slug // empty' "${state}")"
+[[ -n "${slug}" ]] || exit 0
+exec "${QM}/scripts/qm-video-restart" "${slug}"

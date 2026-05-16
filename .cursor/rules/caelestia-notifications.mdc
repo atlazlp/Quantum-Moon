@@ -1,0 +1,19 @@
+---
+description: Use Caelestia shell toaster instead of notify-send for agent-driven desktop pings
+alwaysApply: true
+---
+
+# Desktop notifications from the agent
+
+When a short, asynchronous desktop ping is useful (task finished, script done, user asked to be notified outside the chat pane), use the **Caelestia** shell toaster — not `notify-send` and not relying on Cursor’s workbench toasts.
+
+Caelestia must be running (`caelestia shell -d` / normal session). Pick the function that matches severity:
+
+- `caelestia shell toaster success "Title" "Message" ""`
+- `caelestia shell toaster info "Title" "Message" ""`
+- `caelestia shell toaster warn "Title" "Message" ""`
+- `caelestia shell toaster error "Title" "Message" ""`
+
+Use a material icon name for the third argument when it helps (or `""`). Keep titles short.
+
+Routine status belongs in the chat reply; only use the toaster when the user explicitly wants a desktop cue or the workflow is clearly fire-and-forget.

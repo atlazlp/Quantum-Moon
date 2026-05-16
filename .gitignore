@@ -1,0 +1,5 @@
+backup/*.zip
+backup/*.tar.gz
+**/.DS_Store
+__pycache__/
+*.py[cod]

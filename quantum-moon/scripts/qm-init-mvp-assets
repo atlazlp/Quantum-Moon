@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+QM_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MODES_DIR="${QM_ROOT}/modes"
+
+if ! command -v convert >/dev/null 2>&1 && ! command -v magick >/dev/null 2>&1; then
+  python3 -c "from PIL import Image" 2>/dev/null || {
+    echo "Install ImageMagick (convert) or python-pillow for PNG generation." >&2
+    exit 1
+  }
+fi
+
+rand_hex() {
+  printf '%02x%02x%02x' $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256))
+}
+
+make_solid_png() {
+  local out="$1"
+  local hex="$2"
+  if command -v convert >/dev/null 2>&1; then
+    convert -size 1920x1080 "xc:#${hex}" "${out}"
+    return
+  fi
+  if command -v magick >/dev/null 2>&1; then
+    magick -size 1920x1080 "xc:#${hex}" "${out}"
+    return
+  fi
+  python3 -c "from PIL import Image; Image.new('RGB', (1920, 1080), '#${hex}').save('${out}')"
+}
+
+while IFS= read -r -d '' d; do
+  mkdir -p "${d}/wallpapers"
+  for s in 0 1 2; do
+    make_solid_png "${d}/wallpapers/slot-${s}.png" "$(rand_hex)"
+  done
+  make_solid_png "${d}/logo.png" "$(rand_hex)"
+done < <(find "${MODES_DIR}" -mindepth 1 -maxdepth 1 -type d -print0)
+
+echo "MVP assets generated under ${MODES_DIR}"

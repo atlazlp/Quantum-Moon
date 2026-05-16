@@ -1,0 +1,64 @@
+{
+    "general": {
+        "logo": "~/.config/caelestia/assets/logo.png",
+        "mediaGifSpeedAdjustment": 120,
+        "idle": {
+            "inhibitWhenAudio": true
+        }
+    },
+    "background": {
+        "enabled": true,
+        "wallpaperEnabled": false,
+        "desktopClock": {
+            "enabled": true
+        },
+        "visualiser": {
+            "enabled": true
+        }
+    },
+    "quantumMoon": {
+        "enabled": true,
+        "showOnHover": true
+    },
+    "bar": {
+        "excludedScreens": ["HDMI-A-1", "DP-3"],
+        "activeWindow": {
+            "showOnHover": false
+        },
+        "showOnHover": false,
+        "entries": [
+            { "id": "logo", "enabled": true },
+            { "id": "workspaces", "enabled": true },
+            { "id": "spacer", "enabled": true },
+            { "id": "activeWindow", "enabled": true },
+            { "id": "spacer", "enabled": true },
+            { "id": "tray", "enabled": true },
+            { "id": "clock", "enabled": true },
+            { "id": "statusIcons", "enabled": true },
+            { "id": "power", "enabled": true }
+        ],
+        "workspaces": {
+            "perMonitorWorkspaces": true
+        }
+    },
+    "session": {
+        "commands": {
+            "logout": ["caelestia", "shell", "lock", "lock"]
+        },
+        "icons": {
+            "logout": "lock"
+        }
+    },
+    "paths": {
+        "sessionGif": "~/.config/caelestia/assets/session-power-tab.gif",
+        "mediaGif": "~/.config/caelestia/assets/mediaGif.gif"
+    },
+    "notifs": {
+        "actionOnClick": true
+    },
+    "utilities": {
+        "toasts": {
+            "configLoaded": false
+        }
+    }
+}

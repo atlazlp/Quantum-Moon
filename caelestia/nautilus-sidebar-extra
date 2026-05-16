@@ -1,0 +1,5 @@
+# Optional sidebar shortcuts for paths that exist as directories.
+# Format per line: /absolute/path Label with spaces ok
+# Lines starting with # are ignored.
+/mnt/Backup Backup
+/mnt/Data500 Data500

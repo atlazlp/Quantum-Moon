@@ -1,0 +1,12 @@
+---
+description: Hypr user prefs in hypr-user-local.conf — do not wipe
+globs: caelestia/hypr-user*.conf,**/install-caelestia*.sh,**/install-caelestia-overlays.sh
+alwaysApply: false
+---
+
+# Hyprland `hypr-user-local.conf`
+
+- **`~/.config/caelestia/hypr-user-local.conf`** is sourced last from **`hypr-user.conf`**. Put personal **`input { }`**, **`cursor { }`**, and the **thumb-button (`mouse:275`) / `mousedragthumb` submap** here — not only in `hypr-user.conf` — so **`install-caelestia.sh` / `install-caelestia-overlays.sh`** do not erase them (those scripts only create `hypr-user-local.conf` when missing).
+- **Do not remove or rewrite** the **`mousedragthumb`** block ( **`bind = , mouse:275, submap, mousedragthumb`** + **`bindm = , mouse:272, movewindow`** inside that submap) unless the user explicitly asks. It restores **side button + LMB drag** without Super; stock Caelestia keeps **Super+LMB move** and **Super+RMB resize** in **`keybinds.conf`**.
+- **Do not** set **`kb_variant = nodeadkeys`** here unless the user asks: default **`kb_layout = br`** keeps **dead keys**.
+- Shared snippets (monitors, quantum-moon, shell restart) stay in **`caelestia/hypr-user.conf`**.
