@@ -27,6 +27,36 @@ StyledListView {
         values: {
             const q = (root.search.text ?? "").toLowerCase();
             const vals = Hypr.toplevels?.values;
+
+            function formatHyprAddress(addr): string {
+                if (addr === undefined || addr === null)
+                    return "";
+                if (typeof addr === "number" && Number.isFinite(addr))
+                    return `0x${Math.trunc(addr).toString(16)}`;
+                let s = String(addr).trim();
+                if (!s)
+                    return "";
+                if (s.startsWith("0x") || s.startsWith("0X"))
+                    return `0x${s.slice(2).toLowerCase()}`;
+                return `0x${s.toLowerCase()}`;
+            }
+
+            function isListableToplevel(c): bool {
+                const lo = c?.lastIpcObject;
+                if (!lo)
+                    return false;
+                if (lo.mapped === false || lo.hidden === true)
+                    return false;
+                if (!formatHyprAddress(c.address))
+                    return false;
+                const sz = lo.size;
+                if (Array.isArray(sz) && sz[0] === 0 && sz[1] === 0)
+                    return false;
+                const klass = (lo.class ?? lo.initialClass ?? "").toString().trim();
+                const title = (lo.title ?? lo.initialTitle ?? "").toString().trim();
+                return !!(klass || title);
+            }
+
             const sep = /\s+[\-\u2013\u2014]\s+/;
             const knownSuffixes = new Set([
                 "mozilla firefox",
@@ -87,14 +117,16 @@ StyledListView {
 
             let rows = [];
             if (vals && typeof vals.filter === "function") {
-                rows = vals.filter(c => c?.lastIpcObject).map(c => {
+                rows = vals.filter(isListableToplevel).map(c => {
                     const lo = c.lastIpcObject;
-                    const klass = (lo.class ?? "").toString().trim();
-                    const rawTitle = (lo.title ?? "").toString().trim();
-                    const line = rawTitle ? stripTrailingAppSegments(rawTitle, klass) : "?";
+                    const klass = (lo.class ?? lo.initialClass ?? "").toString().trim();
+                    const rawTitle = (lo.title ?? lo.initialTitle ?? "").toString().trim();
+                    let line = rawTitle ? stripTrailingAppSegments(rawTitle, klass) : "";
+                    if (!line)
+                        line = klass || "?";
                     const searchText = `${klass} ${rawTitle}`.toLowerCase();
                     return {
-                        address: String(c.address ?? ""),
+                        address: formatHyprAddress(c.address),
                         pid: typeof lo.pid === "number" ? lo.pid : parseInt(lo.pid, 10) || 0,
                         line,
                         klass,

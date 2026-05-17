@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Caelestia.Config
 import qs.components
@@ -57,15 +58,20 @@ FocusScope {
         if (!row)
             return;
 
+        const addr = (row.address ?? "").toString().trim();
         const pid = row.pid ?? 0;
-        if (pid > 0)
+        if (addr)
+            Hypr.dispatch(`killwindow address:${addr}`);
+        else if (pid > 0)
             killProc.command = ["kill", "-TERM", String(pid)];
-        else if (row.address)
-            killProc.command = ["hyprctl", "dispatch", `closewindow address:0x${row.address}`];
         else
             return;
 
-        killProc.running = true;
+        if (addr)
+            Hyprland.refreshToplevels();
+        else
+            killProc.running = true;
+
         dismiss();
     }
 
@@ -149,6 +155,8 @@ FocusScope {
 
     Process {
         id: killProc
+
+        onExited: Hyprland.refreshToplevels()
     }
 
     Keys.onPressed: event => root.handleKey(event)
@@ -236,7 +244,7 @@ FocusScope {
                 width: parent.width
                 text: {
                     const pid = root.target?.pid ?? 0;
-                    return pid > 0 ? qsTr("PID %1").arg(pid) : qsTr("Window %1").arg(root.target?.address ?? "");
+                    return pid > 0 ? qsTr("PID %1").arg(pid) : qsTr("Window %1").arg((root.target?.address ?? "").replace(/^0x/i, ""));
                 }
                 font.pointSize: Tokens.font.size.small
                 color: Colours.palette.m3outline

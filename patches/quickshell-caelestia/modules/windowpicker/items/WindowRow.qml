@@ -34,7 +34,7 @@ Item {
         anchors.rightMargin: root.rowHovered ? root.killWidth : 0
         radius: Tokens.rounding.normal
         onClicked: {
-            Hypr.dispatch(`focuswindow address:0x${root.modelData.address}`);
+            Hypr.dispatch(`focuswindow address:${root.modelData.address}`);
             root.visibilities.windowPicker = false;
         }
     }

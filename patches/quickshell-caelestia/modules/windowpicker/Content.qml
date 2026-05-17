@@ -94,7 +94,7 @@ Item {
             onAccepted: {
                 const md = list.currentItem?.modelData;
                 if (md && md.address) {
-                    Hypr.dispatch(`focuswindow address:0x${md.address}`);
+                    Hypr.dispatch(`focuswindow address:${md.address}`);
                     root.visibilities.windowPicker = false;
                 }
             }
