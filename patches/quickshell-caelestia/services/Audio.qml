@@ -133,6 +133,10 @@ Singleton {
         setAudioSink(sinks[nextIndex]);
     }
 
+    function reloadMicrophone(): void {
+        reloadMicProc.running = true;
+    }
+
     function setStreamVolume(stream: PwNode, newVolume: real): void {
         if (stream?.ready && stream?.audio) {
             stream.audio.muted = false;
@@ -248,6 +252,18 @@ Singleton {
         onExited: refreshPortProc.running = true
     }
 
+    Process {
+        id: reloadMicProc
+
+        command: [Quickshell.env("HOME") + "/.config/caelestia/scripts/audio-reload-mic.sh"]
+        onExited: exitCode => {
+            if (exitCode === 0)
+                Toaster.toast(qsTr("Microphone reloaded"), qsTr("PipeWire capture was restarted"), "mic");
+            else
+                Toaster.toast(qsTr("Microphone reload failed"), qsTr("Could not restart WirePlumber"), "mic_off");
+        }
+    }
+
     PwObjectTracker {
         objects: [...root.sinks, ...root.sources, ...root.streams]
     }
@@ -273,6 +289,10 @@ Singleton {
 
         function analogHeadphones(): void {
             root.setAnalogHeadphones();
+        }
+
+        function reloadMic(): void {
+            root.reloadMicrophone();
         }
 
         target: "audio"

@@ -29,17 +29,22 @@ chmod u+x "${HOME}/.config/hypr/scripts/wsaction.fish"
 mkdir -p "${HOME}/.config/hypr" "${HOME}/.config/caelestia/scripts"
 install -m755 "${ROOT}/scripts/inhibit-sleep-while-audio-playback.sh" "${HOME}/.config/caelestia/scripts/inhibit-sleep-while-audio-playback.sh"
 install -m755 "${ROOT}/scripts/audio-toggle-analog-output.sh" "${HOME}/.config/caelestia/scripts/audio-toggle-analog-output.sh"
+install -m755 "${ROOT}/scripts/audio-reload-mic.sh" "${HOME}/.config/caelestia/scripts/audio-reload-mic.sh"
 mkdir -p "${HOME}/.config/wireplumber/wireplumber.conf.d"
 install -m644 "${ROOT}/config/wireplumber/wireplumber.conf.d/51-alsa-analog-ports.conf" "${HOME}/.config/wireplumber/wireplumber.conf.d/51-alsa-analog-ports.conf"
 install -m755 "${ROOT}/caelestia/scripts/cursor-clean.sh" "${HOME}/.config/caelestia/scripts/cursor-clean.sh"
 install -m755 "${ROOT}/caelestia/scripts/nautilus-wrap.sh" "${HOME}/.config/caelestia/scripts/nautilus-wrap.sh"
+install -m755 "${ROOT}/caelestia/scripts/hyprresume-save.sh" "${HOME}/.config/caelestia/scripts/hyprresume-save.sh"
 install -m644 "${ROOT}/caelestia/hypr-user.conf" "${HOME}/.config/caelestia/hypr-user.conf"
 if [[ ! -f "${HOME}/.config/caelestia/hypr-user-local.conf" ]]; then
   install -m644 "${ROOT}/caelestia/hypr-user-local.conf" "${HOME}/.config/caelestia/hypr-user-local.conf"
 fi
 install -m644 "${ROOT}/caelestia/hypr-vars.conf" "${HOME}/.config/caelestia/hypr-vars.conf"
 install -m644 "${ROOT}/caelestia/hypr-env-qt.conf" "${HOME}/.config/caelestia/hypr-env-qt.conf"
-install -m644 "${ROOT}/caelestia/shell.json" "${HOME}/.config/caelestia/shell.json"
+install -m644 "${ROOT}/caelestia/hyprresume.toml" "${HOME}/.config/caelestia/hyprresume.toml"
+if [[ ! -f "${HOME}/.config/caelestia/shell.json" ]]; then
+  install -m644 "${ROOT}/caelestia/shell.json" "${HOME}/.config/caelestia/shell.json"
+fi
 if [[ -d "${ROOT}/caelestia/assets" ]]; then
   mkdir -p "${HOME}/.config/caelestia/assets"
   cp -a "${ROOT}/caelestia/assets/." "${HOME}/.config/caelestia/assets/"
