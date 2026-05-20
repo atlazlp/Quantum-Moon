@@ -15,6 +15,11 @@ from urllib.parse import unquote, urlparse
 
 
 SCHEME_FILE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "caelestia" / "scheme.json"
+HYPR_SCHEME_CONF = (
+    Path.home() / ".local" / "share" / "caelestia" / "hypr" / "scheme" / "current.conf"
+)
+HYPR_GROUPBAR_CONF = HYPR_SCHEME_CONF.parent / "groupbar.conf"
+HYPR_SHADOW_CONF = HYPR_SCHEME_CONF.parent / "shadow.conf"
 KDE_SCHEME_KEY = "CaelestiaQM"
 KDE_SCHEME_FILE = KDE_SCHEME_KEY + ".colors"
 GENERATED_CSS = Path.home() / ".config" / "caelestia" / "generated" / "qm-libadwaita.css"
@@ -176,6 +181,205 @@ def load_colours(path: Path) -> dict[str, str]:
             except ValueError:
                 continue
     return out
+
+
+def hypr_scheme_conf(colours: dict[str, str]) -> str:
+    return "".join(f"${name} = {colour}\n" for name, colour in colours.items())
+
+
+def relative_luminance(hex6: str) -> float:
+    def channel(value: int) -> float:
+        c = value / 255.0
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = hx_to_rgb(hex6)
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def contrast_ratio(fg: str, bg: str) -> float:
+    l1 = relative_luminance(fg)
+    l2 = relative_luminance(bg)
+    lighter, darker = max(l1, l2), min(l1, l2)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def sort_keys_by_luminance(
+    c: dict[str, str], keys: tuple[str, ...], fallback: str, *, reverse: bool = True
+) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            keys,
+            key=lambda k: relative_luminance(pick(c, k, fallback)),
+            reverse=reverse,
+        )
+    )
+
+
+def best_pair(
+    c: dict[str, str],
+    bg_keys: tuple[str, ...],
+    on_keys: tuple[str, ...],
+    bg_fallback: str,
+    on_fallback: str,
+    min_ratio: float = 4.5,
+    *,
+    lighter_background: bool = False,
+) -> tuple[str, str]:
+    ordered_bg = (
+        sort_keys_by_luminance(c, bg_keys, bg_fallback)
+        if lighter_background
+        else bg_keys
+    )
+    bg_key = next((k for k in ordered_bg if c.get(k)), ordered_bg[0])
+    bg = pick(c, bg_key, bg_fallback)
+    best_on_key = on_keys[0]
+    best_on = pick(c, best_on_key, on_fallback)
+    best_ratio = contrast_ratio(best_on, bg)
+    for on_key in on_keys:
+        on = pick(c, on_key, on_fallback)
+        ratio = contrast_ratio(on, bg)
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_on = on
+            best_on_key = on_key
+    if best_ratio < min_ratio:
+        for on_key in ("onSurface", "onPrimary", "onBackground", "inverseSurface"):
+            on = pick(c, on_key, on_fallback)
+            ratio = contrast_ratio(on, bg)
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_on = on
+                best_on_key = on_key
+    return bg_key, best_on_key
+
+
+def hypr_rgba_var(colour_key: str, alpha: str = "f0") -> str:
+    return f"rgba(${colour_key}{alpha})"
+
+
+def hypr_shadow_tint_hex(colours: dict[str, str]) -> str:
+    base = pick(colours, "shadow", "000000")
+    tint = pick(colours, "surfaceTint", pick(colours, "primary", "9bd0cc"))
+    return blend_towards(base, tint, 0.08)
+
+
+def hypr_window_glow_vars(colours: dict[str, str]) -> str:
+    tint = hypr_shadow_tint_hex(colours)
+    border = "primary" if colours.get("primary") else "surfaceTint"
+    return f"""$qmShadowTint = {tint}
+$shadowColour = rgba($qmShadowTint1a)
+$shadowRange = 28
+$shadowRenderPower = 2
+$activeWindowBorderColour = {hypr_rgba_var(border, "e6")}
+$inactiveWindowBorderColour = rgba($onSurfaceVariant11)
+"""
+
+
+def hypr_shadow_decoration_conf() -> str:
+    return """decoration {
+    shadow {
+        range = 28
+        render_power = 2
+        offset = 0, 8
+        color = rgba($qmShadowTint1a)
+    }
+}
+"""
+
+
+def hypr_groupbar_conf(colours: dict[str, str]) -> str:
+    active_bg, active_fg = best_pair(
+        colours,
+        ("primary", "primaryFixed", "primaryContainer", "primaryDim"),
+        ("onPrimaryContainer", "onPrimary", "onPrimaryFixed"),
+        "255b58",
+        "0d4845",
+        lighter_background=True,
+    )
+    inactive_bg, inactive_fg = best_pair(
+        colours,
+        (
+            "outlineVariant",
+            "surfaceBright",
+            "surfaceContainerHigh",
+            "surfaceVariant",
+            "surfaceContainer",
+            "surfaceContainerHighest",
+        ),
+        ("onSurface", "onSurfaceVariant", "onBackground"),
+        "1d2827",
+        "dce8e6",
+        lighter_background=True,
+    )
+    locked_active_bg, locked_active_fg = best_pair(
+        colours,
+        ("tertiary", "tertiaryFixed", "tertiaryContainer", "tertiaryDim"),
+        ("onTertiaryContainer", "onTertiary", "onTertiaryFixed"),
+        "b6e3fe",
+        "255369",
+        lighter_background=True,
+    )
+    locked_inactive_bg, locked_inactive_fg = best_pair(
+        colours,
+        ("secondary", "secondaryFixed", "secondaryContainer", "secondaryDim"),
+        ("onSecondaryContainer", "onSecondary", "onSecondaryFixed"),
+        "27403e",
+        "a9c5c2",
+        lighter_background=True,
+    )
+    return f"""group {{
+    groupbar {{
+        text_color = rgb(${active_fg})
+        text_color_inactive = rgb(${inactive_fg})
+        text_color_locked_active = rgb(${locked_active_fg})
+        text_color_locked_inactive = rgb(${locked_inactive_fg})
+
+        col.active = {hypr_rgba_var(active_bg, "f5")}
+        col.inactive = {hypr_rgba_var(inactive_bg, "f5")}
+        col.locked_active = {hypr_rgba_var(locked_active_bg, "f5")}
+        col.locked_inactive = {hypr_rgba_var(locked_inactive_bg, "f5")}
+    }}
+}}
+"""
+
+
+def hypr_theme_overrides_conf(colours: dict[str, str]) -> str:
+    return hypr_window_glow_vars(colours) + "\n" + hypr_groupbar_conf(colours)
+
+
+def _write_hypr_conf(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".conf.tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(path)
+    mirror = Path.home() / ".config" / "hypr" / "scheme" / path.name
+    if mirror != path and mirror.parent.exists():
+        tmp2 = mirror.with_suffix(".conf.tmp")
+        tmp2.write_text(content, encoding="utf-8")
+        tmp2.replace(mirror)
+
+
+def write_hypr_groupbar_conf(colours: dict[str, str]) -> None:
+    _write_hypr_conf(HYPR_GROUPBAR_CONF, hypr_theme_overrides_conf(colours))
+    _write_hypr_conf(HYPR_SHADOW_CONF, hypr_shadow_decoration_conf())
+
+
+def sync_hypr_scheme(colours: dict[str, str]) -> None:
+    hyprctl = shutil.which("hyprctl")
+    if not hyprctl:
+        return
+    conf = hypr_scheme_conf(colours)
+    HYPR_SCHEME_CONF.parent.mkdir(parents=True, exist_ok=True)
+    tmp = HYPR_SCHEME_CONF.with_suffix(".conf.tmp")
+    tmp.write_text(conf, encoding="utf-8")
+    tmp.replace(HYPR_SCHEME_CONF)
+    hypr_cfg = Path.home() / ".config" / "hypr" / "scheme" / "current.conf"
+    if hypr_cfg != HYPR_SCHEME_CONF and hypr_cfg.parent.exists():
+        tmp_cfg = hypr_cfg.with_suffix(".conf.tmp")
+        tmp_cfg.write_text(conf, encoding="utf-8")
+        tmp_cfg.replace(hypr_cfg)
+    write_hypr_groupbar_conf(colours)
+    subprocess.run([hyprctl, "reload"], check=False, capture_output=True, timeout=10)
 
 
 def pick(c: dict[str, str], key: str, fallback: str) -> str:
@@ -641,6 +845,11 @@ def gtk4_reorder_imports_first(css: str) -> str:
     while rest and not rest[0].strip():
         rest.pop(0)
     return "\n".join(imports) + "\n\n" + "\n".join(rest).rstrip() + ("\n" if rest else "")
+
+
+def rgba(hex6: str, alpha: float) -> str:
+    r, g, b = hx_to_rgb(hex6)
+    return f"rgba({r}, {g}, {b}, {alpha})"
 
 
 def gtk3_block(c: dict[str, str]) -> str:
@@ -1312,6 +1521,7 @@ def main() -> None:
             subprocess.run(cmd, check=False, capture_output=True, timeout=5)
 
     stop_nautilus_for_theme_reload()
+    sync_hypr_scheme(c)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,12 @@
         "logo": "~/.config/caelestia/assets/logo.png",
         "mediaGifSpeedAdjustment": 120,
         "idle": {
-            "inhibitWhenAudio": true
+            "inhibitWhenAudio": true,
+            "timeouts": [
+                { "timeout": 1800, "idleAction": "lock" },
+                { "timeout": 2100, "idleAction": "dpms off", "returnAction": "dpms on" },
+                { "timeout": 2400, "idleAction": ["systemctl", "suspend-then-hibernate"] }
+            ]
         }
     },
     "background": {
@@ -22,6 +27,7 @@
     },
     "bar": {
         "excludedScreens": ["HDMI-A-1", "DP-3"],
+        "persistent": false,
         "activeWindow": {
             "showOnHover": false
         },

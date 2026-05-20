@@ -112,7 +112,7 @@ qm_center_active_workspace_id() {
 
 qm_video_stop() {
   mkdir -p "${STATE_DIR}"
-  local pf sock
+  local pf sock center_mon
   pf="$(qm_video_pidfile)"
   sock="$(qm_video_sock)"
   if [[ -f "${pf}" ]]; then
@@ -127,6 +127,18 @@ qm_video_stop() {
       kill -9 "${pid}" 2>/dev/null || true
     fi
     rm -f "${pf}"
+  fi
+  center_mon="$(qm_center_monitor_name 2>/dev/null || true)"
+  if [[ -n "${center_mon}" ]]; then
+    pkill -f "mpvpaper.*[[:space:]]${center_mon}[[:space:]]" 2>/dev/null || true
+  fi
+  if pgrep -x mpvpaper >/dev/null 2>&1; then
+    pkill -x mpvpaper 2>/dev/null || true
+    for _ in $(seq 1 30); do
+      pgrep -x mpvpaper >/dev/null 2>&1 || break
+      sleep 0.05
+    done
+    pkill -9 -x mpvpaper 2>/dev/null || true
   fi
   rm -f "${sock}"
 }
