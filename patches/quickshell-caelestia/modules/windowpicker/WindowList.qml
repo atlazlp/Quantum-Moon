@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Caelestia.Config
 import qs.components
 import qs.components.containers
@@ -17,7 +18,65 @@ StyledListView {
     required property var onKillRequest
     property bool muteKeys: false
 
+    property var memoryByPid: ({})
+    property int memoryRev: 0
+
     signal killRequested(var rowData)
+
+    function formatRam(kb: int): string {
+        if (!kb || kb <= 0)
+            return "";
+        const mib = kb / 1024;
+        if (mib >= 1024)
+            return `${(mib / 1024).toFixed(1)} GB`;
+        if (mib >= 100)
+            return `${Math.round(mib)} MB`;
+        if (mib >= 10)
+            return `${Math.round(mib)} MB`;
+        return `${mib.toFixed(1)} MB`;
+    }
+
+    Timer {
+        id: memTimer
+
+        interval: 2000
+        repeat: true
+        running: root.visibilities?.windowPicker ?? false
+        onTriggered: memProc.running = true
+    }
+
+    Connections {
+        target: root.visibilities
+
+        function onWindowPickerChanged(): void {
+            if (root.visibilities.windowPicker)
+                memProc.running = true;
+        }
+    }
+
+    Process {
+        id: memProc
+
+        command: ["sh", "-c", "ps -eo pid=,rss= --no-headers 2>/dev/null"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const map = {};
+                for (const line of text.trim().split("\n")) {
+                    if (!line)
+                        continue;
+                    const parts = line.trim().split(/\s+/);
+                    if (parts.length < 2)
+                        continue;
+                    const pid = parseInt(parts[0], 10);
+                    const kb = parseInt(parts[1], 10);
+                    if (pid > 0 && kb >= 0)
+                        map[pid] = kb;
+                }
+                root.memoryByPid = map;
+                root.memoryRev++;
+            }
+        }
+    }
 
     model: ScriptModel {
         id: model
@@ -25,6 +84,9 @@ StyledListView {
         onValuesChanged: root.currentIndex = 0
 
         values: {
+            const _rev = LauncherItemOverrides.revision;
+            const _mem = root.memoryRev;
+            const memMap = root.memoryByPid;
             const q = (root.search.text ?? "").toLowerCase();
             const vals = Hypr.toplevels?.values;
 
@@ -124,17 +186,27 @@ StyledListView {
                     let line = rawTitle ? stripTrailingAppSegments(rawTitle, klass) : "";
                     if (!line)
                         line = klass || "?";
-                    const searchText = `${klass} ${rawTitle}`.toLowerCase();
+                    line = LauncherItemOverrides.displayLabel("window", klass, line);
+                    const subtitle = LauncherItemOverrides.subtitle("window", klass, klass);
+                    const pid = typeof lo.pid === "number" ? lo.pid : parseInt(lo.pid, 10) || 0;
+                    const ramKb = pid > 0 ? (memMap[pid] ?? 0) : 0;
+                    const searchText = `${klass} ${rawTitle} ${line} ${subtitle}`.toLowerCase();
                     return {
                         address: formatHyprAddress(c.address),
-                        pid: typeof lo.pid === "number" ? lo.pid : parseInt(lo.pid, 10) || 0,
+                        pid,
                         line,
                         klass,
+                        subtitle,
+                        ramKb,
+                        ramLabel: root.formatRam(ramKb),
                         searchText,
                         title: rawTitle
                     };
                 });
                 rows.sort((a, b) => {
+                    const dr = (b.ramKb ?? 0) - (a.ramKb ?? 0);
+                    if (dr !== 0)
+                        return dr;
                     const c = a.line.localeCompare(b.line);
                     if (c !== 0)
                         return c;

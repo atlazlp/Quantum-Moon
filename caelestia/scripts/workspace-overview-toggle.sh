@@ -14,7 +14,8 @@ if [[ "$MODE" == "all" ]]; then
   if command -v qs >/dev/null 2>&1 && qs -c caelestia ipc call drawers toggle windowPicker >/dev/null 2>&1; then
     exit 0
   fi
-  exec "${DIR}/window-picker-fuzzel.sh"
+  echo "window picker unavailable (start Caelestia shell)" >&2
+  exit 1
 fi
 
 printf 'usage: %s all\n' "$(basename "$0")" >&2

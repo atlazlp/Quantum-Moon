@@ -5,6 +5,7 @@ import Quickshell
 import Caelestia.Config
 import qs.components
 import qs.modules.windowpicker.items
+import qs.services
 
 Item {
     id: root
@@ -14,10 +15,12 @@ Item {
     required property var panels
 
     property var pendingKill: null
+    property bool pointerInside: pickerHover.hovered
 
     readonly property bool killConfirmOpen: pendingKill !== null && pendingKill !== undefined
 
-    readonly property bool shouldBeActive: visibilities.windowPicker
+    readonly property bool launcherUiVisible: (visibilities.launcher && Config.launcher.enabled) || panels.launcher.offsetScale < 1.0
+    readonly property bool shouldBeActive: visibilities.windowPicker && !launcherUiVisible && !LauncherItemOverrides.launcherJustUsed()
 
     function requestKill(row: var): void {
         pendingKill = row;
@@ -43,12 +46,18 @@ Item {
     }
 
     visible: offsetScale < 1
+    enabled: root.shouldBeActive || (panels.launcher.offsetScale ?? 0) >= 1
     anchors.bottomMargin: (-implicitHeight - 5) * offsetScale
+
+    HoverHandler {
+        id: pickerHover
+    }
     implicitHeight: content.implicitHeight
     implicitWidth: content.implicitWidth || 630
     opacity: 1 - offsetScale
 
     Behavior on offsetScale {
+        enabled: !root.launcherUiVisible
         Anim {
             type: Anim.DefaultSpatial
         }

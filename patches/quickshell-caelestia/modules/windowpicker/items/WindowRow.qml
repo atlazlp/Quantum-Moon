@@ -15,8 +15,16 @@ Item {
     required property DrawerVisibilities visibilities
     required property var onKillRequest
 
+    readonly property string windowKey: root.modelData?.klass ?? ""
     readonly property int killWidth: Tokens.sizes.launcher.itemHeight
-    readonly property bool rowHovered: rowHover.hovered || killMouse.containsMouse
+    readonly property int settingsWidth: Tokens.sizes.launcher.itemHeight
+    readonly property int actionWidth: root.rowHovered ? root.killWidth + root.settingsWidth : 0
+    readonly property bool rowHovered: rowHover.hovered || killMouse.containsMouse || settingsMouse.containsMouse
+    readonly property string defaultIcon: Icons.getAppIcon(root.windowKey, "image-missing")
+    readonly property string defaultLabel: root.modelData?.line ?? ""
+    readonly property string defaultSubtitle: root.modelData?.klass ?? ""
+    readonly property string ramLabel: root.modelData?.ramLabel ?? ""
+    readonly property int overrideRev: LauncherItemOverrides.revision
 
     implicitHeight: Tokens.sizes.launcher.itemHeight
 
@@ -31,9 +39,11 @@ Item {
         id: stateLayer
 
         anchors.fill: parent
-        anchors.rightMargin: root.rowHovered ? root.killWidth : 0
+        anchors.rightMargin: root.actionWidth
         radius: Tokens.rounding.normal
         onClicked: {
+            if (LauncherItemOverrides.launcherJustCleared())
+                return;
             Hypr.dispatch(`focuswindow address:${root.modelData.address}`);
             root.visibilities.windowPicker = false;
         }
@@ -42,14 +52,17 @@ Item {
     Item {
         anchors.fill: parent
         anchors.leftMargin: Tokens.padding.larger
-        anchors.rightMargin: Tokens.padding.larger + (root.rowHovered ? root.killWidth : 0)
+        anchors.rightMargin: Tokens.padding.larger + root.actionWidth
         anchors.margins: Tokens.padding.smaller
 
         IconImage {
             id: icon
 
             asynchronous: true
-            source: Icons.getAppIcon(root.modelData?.klass ?? "", "image-missing")
+            source: {
+                const _r = root.overrideRev;
+                return LauncherItemOverrides.iconSource("window", root.windowKey, root.defaultIcon);
+            }
             implicitSize: parent.height * 0.8
 
             anchors.verticalCenter: parent.verticalCenter
@@ -64,30 +77,116 @@ Item {
             anchors.rightMargin: Tokens.padding.larger
             anchors.verticalCenter: icon.verticalCenter
 
-            implicitHeight: name.implicitHeight + comment.implicitHeight
+            implicitHeight: name.implicitHeight + subtitleRow.implicitHeight
 
             StyledText {
                 id: name
 
                 width: parent.width
-                text: root.modelData?.line ?? ""
+                text: LauncherItemOverrides.displayLabel("window", root.windowKey, root.defaultLabel)
                 font.pointSize: Tokens.font.size.normal
                 elide: Text.ElideRight
                 wrapMode: Text.NoWrap
             }
 
-            StyledText {
-                id: comment
+            Item {
+                id: subtitleRow
 
                 width: parent.width
                 anchors.top: name.bottom
+                implicitHeight: comment.implicitHeight
 
-                text: root.modelData?.klass ?? ""
-                font.pointSize: Tokens.font.size.small
-                color: Colours.palette.m3outline
+                StyledText {
+                    id: comment
 
-                elide: Text.ElideRight
-                wrapMode: Text.NoWrap
+                    anchors.left: parent.left
+                    anchors.right: ramLabel.visible ? ramLabel.left : parent.right
+                    anchors.rightMargin: ramLabel.visible ? Tokens.spacing.small : 0
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    text: LauncherItemOverrides.subtitle("window", root.windowKey, root.defaultSubtitle)
+                    font.pointSize: Tokens.font.size.small
+                    color: Colours.palette.m3outline
+
+                    elide: Text.ElideRight
+                    wrapMode: Text.NoWrap
+                }
+
+                StyledText {
+                    id: ramLabel
+
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    text: root.ramLabel
+                    visible: text.length > 0
+                    font.pointSize: Tokens.font.size.small
+                    color: Colours.palette.m3outline
+                }
+            }
+        }
+    }
+
+    Item {
+        id: settingsSection
+
+        z: 1
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: killSection.left
+        width: root.rowHovered ? root.settingsWidth : 0
+        clip: true
+        opacity: root.rowHovered ? 1 : 0
+
+        Behavior on width {
+            Anim {
+                type: Anim.StandardSmall
+            }
+        }
+
+        Behavior on opacity {
+            Anim {
+                type: Anim.StandardSmall
+            }
+        }
+
+        MaterialIcon {
+            anchors.centerIn: parent
+            text: "settings"
+            color: Colours.palette.m3onSurfaceVariant
+            opacity: root.rowHovered ? 1 : 0
+            scale: root.rowHovered ? 1 : 0.55
+
+            Behavior on opacity {
+                Anim {
+                    type: Anim.StandardSmall
+                }
+            }
+
+            Behavior on scale {
+                Anim {
+                    type: Anim.StandardSmall
+                }
+            }
+        }
+
+        MouseArea {
+            id: settingsMouse
+
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+
+            onClicked: mouse => {
+                mouse.accepted = true;
+                LauncherItemOverrides.openEditor({
+                    type: "window",
+                    key: root.windowKey,
+                    screen: Config.screen,
+                    defaultLabel: root.defaultLabel,
+                    defaultSubtitle: root.defaultSubtitle,
+                    defaultIcon: root.defaultIcon
+                });
             }
         }
     }

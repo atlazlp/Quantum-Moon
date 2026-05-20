@@ -8,7 +8,7 @@ cat <<'WARN' >&2
 WARNING: Hyprspace builds for Hyprland 0.54.3 but has been observed to SEGV at runtime
 (in plugin onMouseButton — see ~/.cache/hyprland/hyprlandCrashReport*.txt).
 Do NOT "hyprctl plugin load" this .so on 0.54.3 unless you are debugging upstream.
-Super+D / bar overview use fuzzel without Hyprspace.
+Super+D / bar overview use Caelestia window picker without Hyprspace.
 WARN
 
 mkdir -p "$(dirname "$ROOT")"

@@ -4,6 +4,7 @@ import Quickshell
 import Caelestia.Config
 import qs.components
 import qs.components.controls
+import qs.services
 import qs.modules.bar as Bar
 import qs.modules.bar.popouts as BarPopouts
 
@@ -22,10 +23,32 @@ CustomMouseArea {
     readonly property bool sidebarAllowedOnThisOutput: Config.sidebar.enabled
 
     property point dragStart
+    property bool launcherShortcutActive
+    property bool windowPickerShortcutActive
+    property bool windowPickerDismissedSideways
     property bool dashboardShortcutActive
     property bool quantumMoonShortcutActive
     property bool osdShortcutActive
     property bool utilitiesShortcutActive
+
+    function inStableBottomPanelZone(y: real): bool {
+        const lh = panels.launcher.implicitHeight > 0 ? panels.launcher.implicitHeight : panels.launcher.height;
+        const ph = panels.windowPicker.implicitHeight > 0 ? panels.windowPicker.implicitHeight : panels.windowPicker.height;
+        const panelHeight = Math.max(lh, ph);
+        return y > height - Math.max(Config.border.minThickness, Config.border.thickness + panelHeight) - Config.border.rounding;
+    }
+
+    function canOpenWindowPicker(): bool {
+        if (LauncherItemOverrides.editOpen)
+            return false;
+        if (visibilities.launcher)
+            return false;
+        if (panels.launcher.offsetScale < 1.0)
+            return false;
+        if (LauncherItemOverrides.launcherJustUsed())
+            return false;
+        return true;
+    }
 
     function withinPanelHeight(panel: Item, x: real, y: real): bool {
         const panelY = root.borderThickness + panel.y;
@@ -77,14 +100,41 @@ CustomMouseArea {
         return x >= left && x <= left + p.width && y >= top && y <= top + panelHeight;
     }
 
-    function isOverWindowPickerBounds(x: real, y: real): bool {
-        if (!visibilities.windowPicker)
+    function windowPickerWithinWidth(x: real): bool {
+        const p = panels.windowPicker;
+        const panelX = bar.implicitWidth + p.x;
+        return x >= panelX && x <= panelX + p.width;
+    }
+
+    function windowPickerBottomBand(y: real): bool {
+        const p = panels.windowPicker;
+        const panelHeight = p.height * (1 - (p.offsetScale ?? 0));
+        return y > height - Math.max(Config.border.minThickness, Config.border.thickness + panelHeight) - Config.border.rounding;
+    }
+
+    function inWindowPickerBottomHover(x: real, y: real): bool {
+        return windowPickerWithinWidth(x) && windowPickerBottomBand(y);
+    }
+
+    function pickerPointerBounds(x: real, y: real): bool {
+        if (inWindowPickerBottomHover(x, y))
+            return true;
+        if (!windowPickerWithinWidth(x))
             return false;
         const p = panels.windowPicker;
         const panelHeight = p.height * (1 - (p.offsetScale ?? 0));
-        const left = bar.implicitWidth + p.x;
+        if (panelHeight <= 0)
+            return false;
         const top = borderThickness + p.y + (p.height - panelHeight);
-        return x >= left && x <= left + p.width && y >= top && y <= top + panelHeight;
+        return y >= top && y <= height;
+    }
+
+    function pickerKeepOpen(x: real, y: real): bool {
+        return pickerPointerBounds(x, y) || panels.windowPicker.pointerInside;
+    }
+
+    function isOverWindowPickerBounds(x: real, y: real): bool {
+        return visibilities.windowPicker && pickerKeepOpen(x, y);
     }
 
     function onWheel(event: WheelEvent): void {
@@ -92,6 +142,8 @@ CustomMouseArea {
             return;
         const lx = event.x;
         const ly = event.y;
+        if (bar.disabled)
+            return;
         if (lx < bar.implicitWidth && Config.launcher.showOnHover && inScreenBottomLauncherBand(ly))
             return;
         if (lx < bar.implicitWidth) {
@@ -107,6 +159,7 @@ CustomMouseArea {
 
     anchors.fill: parent
     acceptedButtons: fullscreen ? Qt.NoButton : Qt.AllButtons
+    enabled: !LauncherItemOverrides.editOpen
     hoverEnabled: true
 
     onPressed: event => dragStart = Qt.point(event.x, event.y)
@@ -127,6 +180,12 @@ CustomMouseArea {
             if (!utilitiesShortcutActive)
                 visibilities.utilities = false;
 
+            if (Config.launcher.showOnHover && !launcherShortcutActive)
+                visibilities.launcher = false;
+
+            if (!windowPickerShortcutActive && (!visibilities.windowPicker || !pickerKeepOpen(mouseX, mouseY)))
+                visibilities.windowPicker = false;
+
             if (!popouts.currentName.startsWith("traymenu") || ((popouts.current as StackView)?.depth ?? 0) <= 1) {
                 popouts.hasCurrent = false;
                 bar.closeTray();
@@ -143,6 +202,7 @@ CustomMouseArea {
 
         const x = event.x;
         const y = event.y;
+
         const dragX = x - dragStart.x;
         const dragY = y - dragStart.y;
 
@@ -151,13 +211,12 @@ CustomMouseArea {
             return;
         }
 
-        const inBottomLauncherBand = Config.launcher.showOnHover && inScreenBottomLauncherBand(y);
-
-        if (Config.launcher.showOnHover && !visibilities.launcher && inBottomLauncherBand)
+        if (Config.launcher.showOnHover && !visibilities.launcher && inBottomPanel(panels.launcher, x, y) && canOpenWindowPicker())
             visibilities.launcher = true;
 
         const launcherOpen = visibilities.launcher && Config.launcher.enabled;
         const pickerOpen = visibilities.windowPicker;
+        const inBottomLauncherBand = Config.launcher.showOnHover && inScreenBottomLauncherBand(y);
         const launcherPriority = launcherOpen || pickerOpen || inBottomLauncherBand;
 
         if (launcherPriority) {
@@ -167,14 +226,33 @@ CustomMouseArea {
                 bar.isHovered = false;
         }
 
-        if ((launcherOpen && (isOverLauncherBounds(x, y) || inLauncherVerticalBand(y))) || (pickerOpen && isOverWindowPickerBounds(x, y)))
+        if (Config.launcher.showOnHover && launcherOpen && !launcherShortcutActive && !isOverLauncherBounds(x, y))
+            visibilities.launcher = false;
+
+        if (!Config.launcher.showOnHover && pickerOpen) {
+            const keepPicker = pickerKeepOpen(x, y);
+            const animating = (panels.windowPicker.offsetScale ?? 0) > 0.001 && (panels.windowPicker.offsetScale ?? 0) < 0.999;
+            if (!windowPickerShortcutActive && !keepPicker && !(animating && inWindowPickerBottomHover(x, y))) {
+                const exitedSides = !windowPickerWithinWidth(x);
+                visibilities.windowPicker = false;
+                if (exitedSides && windowPickerBottomBand(y))
+                    windowPickerDismissedSideways = true;
+            } else if (windowPickerShortcutActive && keepPicker) {
+                windowPickerShortcutActive = false;
+            }
+        }
+
+        if (inWindowPickerBottomHover(x, y) || !windowPickerBottomBand(y))
+            windowPickerDismissedSideways = false;
+
+        if ((launcherOpen && (isOverLauncherBounds(x, y) || inLauncherVerticalBand(y))) || (pickerOpen && pickerKeepOpen(x, y)))
             return;
 
-        if (!visibilities.bar && Config.bar.showOnHover && x < bar.clampedWidth && !launcherPriority)
+        if (!bar.disabled && !visibilities.bar && Config.bar.showOnHover && x < bar.clampedWidth && !launcherPriority)
             bar.isHovered = true;
 
         // Show/hide bar on drag
-        if (pressed && dragStart.x < bar.clampedWidth) {
+        if (!bar.disabled && pressed && dragStart.x < bar.clampedWidth) {
             if (dragX > Config.bar.dragThreshold)
                 visibilities.bar = true;
             else if (dragX < -Config.bar.dragThreshold)
@@ -239,16 +317,17 @@ CustomMouseArea {
                 visibilities.sidebar = false;
         }
 
-        // Bottom strip: task list (window picker) on hover when launcher showOnHover is off — never while launcher is open.
-        if (!Config.launcher.showOnHover && !launcherOpen) {
-            if (!visibilities.windowPicker && inBottomPanel(panels.windowPicker, x, y))
+        // Bottom hover: window picker when launcher.showOnHover is off.
+        if (!Config.launcher.showOnHover && !launcherOpen && !pressed && canOpenWindowPicker()) {
+            if (!visibilities.windowPicker && !windowPickerDismissedSideways && inWindowPickerBottomHover(x, y))
                 visibilities.windowPicker = true;
-            if (pressed && inBottomPanel(panels.launcher, dragStart.x, dragStart.y) && withinPanelWidth(panels.launcher, x, y)) {
-                if (dragY < -Config.launcher.dragThreshold)
-                    visibilities.launcher = true;
-                else if (dragY > Config.launcher.dragThreshold)
-                    visibilities.launcher = false;
-            }
+        }
+        // Drag to open launcher when showOnHover is off.
+        if (!Config.launcher.showOnHover && pressed && inBottomPanel(panels.launcher, dragStart.x, dragStart.y) && withinPanelWidth(panels.launcher, x, y)) {
+            if (dragY < -Config.launcher.dragThreshold)
+                visibilities.launcher = true;
+            else if (dragY > Config.launcher.dragThreshold)
+                visibilities.launcher = false;
         }
 
         // Show dashboard on hover
@@ -297,7 +376,7 @@ CustomMouseArea {
         }
 
         // Bar popouts: off while launcher uses bottom hover (tray at bottom Y fought the launcher).
-        if (!Config.launcher.showOnHover && !launcherOpen && x < bar.implicitWidth) {
+        if (!bar.disabled && !Config.launcher.showOnHover && !launcherOpen && x < bar.implicitWidth) {
             bar.checkPopout(y);
         } else if (!launcherPriority && (!popouts.currentName.startsWith("traymenu") || ((popouts.current as StackView)?.depth ?? 0) <= 1) && !inLeftPanel(panels.popoutsWrapper, x, y)) {
             popouts.hasCurrent = false;
@@ -308,7 +387,12 @@ CustomMouseArea {
     // Monitor individual visibility changes
     Connections {
         function onLauncherChanged() {
-            if (!root.visibilities.launcher) {
+            if (root.visibilities.launcher) {
+                const inLauncherArea = root.isOverLauncherBounds(root.mouseX, root.mouseY) || root.inLauncherVerticalBand(root.mouseY);
+                if (!inLauncherArea)
+                    root.launcherShortcutActive = true;
+            } else {
+                root.launcherShortcutActive = false;
                 root.dashboardShortcutActive = false;
                 root.quantumMoonShortcutActive = false;
                 root.osdShortcutActive = false;
@@ -365,6 +449,18 @@ CustomMouseArea {
             } else {
                 // OSD hidden, clear shortcut flag
                 root.osdShortcutActive = false;
+            }
+        }
+
+        function onWindowPickerChanged() {
+            if (root.visibilities.windowPicker) {
+                const inPickerArea = root.pickerKeepOpen(root.mouseX, root.mouseY);
+                if (!inPickerArea) {
+                    root.windowPickerShortcutActive = true;
+                }
+            } else {
+                root.windowPickerShortcutActive = false;
+                root.windowPickerDismissedSideways = false;
             }
         }
 
