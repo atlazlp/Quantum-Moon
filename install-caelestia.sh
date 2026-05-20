@@ -47,7 +47,7 @@ fi
 install -m644 "${ROOT}/caelestia/hyprpaper.conf" "${HOME}/.config/hypr/hyprpaper.conf"
 if [[ -d "${ROOT}/caelestia/monitors" ]]; then
   mkdir -p "${HOME}/.config/caelestia/monitors"
-  cp -a "${ROOT}/caelestia/monitors/." "${HOME}/.config/caelestia/monitors/"
+  cp -rn "${ROOT}/caelestia/monitors/." "${HOME}/.config/caelestia/monitors/" 2>/dev/null || true
 fi
 
 if [[ ! -f "${HOME}/.config/caelestia/nautilus-sidebar-extra" ]] && [[ -f "${ROOT}/caelestia/nautilus-sidebar-extra" ]]; then
@@ -57,7 +57,7 @@ if [[ ! -f "${HOME}/.config/caelestia/nautilus-drive-icons" ]] && [[ -f "${ROOT}
   install -m644 "${ROOT}/caelestia/nautilus-drive-icons" "${HOME}/.config/caelestia/nautilus-drive-icons"
 fi
 
-${YAY} -S --needed --noconfirm polkit-gnome foot kitty hyprpaper mpvpaper nautilus qt6ct frameworkintegration xdg-user-dirs gvfs-smb gvfs-nfs || true
+${YAY} -S --needed --noconfirm polkit-gnome foot kitty hyprpaper mpvpaper nautilus qt6ct frameworkintegration xdg-user-dirs gvfs-smb gvfs-nfs hyprresume || true
 
 xdg-user-dirs-update 2>/dev/null || true
 "${ROOT}/scripts/install-nautilus-sidebar-bookmarks.sh"
