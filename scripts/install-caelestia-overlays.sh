@@ -81,6 +81,11 @@ for s in cursor-clean.sh workspace-overview-toggle.sh window-alt-tab-cycle.sh wi
 done
 rm -f "${DEST_C}/scripts/window-picker-fuzzel.sh" "${DEST_C}/scripts/qm-launcher-log.sh"
 install -m644 "${CAE}/hypr-user.conf" "${DEST_C}/hypr-user.conf"
+if [[ -x "${CAE}/scripts/gen-hypr-launcher-interrupts.sh" ]]; then
+  "${CAE}/scripts/gen-hypr-launcher-interrupts.sh" "${DEST_C}/hypr-launcher-interrupts.conf"
+else
+  echo "WARN: missing ${CAE}/scripts/gen-hypr-launcher-interrupts.sh (Super chords may open the launcher)" >&2
+fi
 if [[ ! -f "${DEST_C}/hypr-user-local.conf" ]]; then
   install -m644 "${CAE}/hypr-user-local.conf" "${DEST_C}/hypr-user-local.conf"
 fi
