@@ -39,18 +39,54 @@ Scope {
 
     readonly property bool enabled: !(GlobalConfig.general.idle.inhibitWhenAudio && (Players.list.some(p => p.isPlaying) || root.pipewirePlaybackActive))
 
+    property bool lockedByIdle: false
+    property bool manualLock: false
+    property bool inIdleLockAction: false
+
+    readonly property var lockedIdleTimeouts: GlobalConfig.general.idle.lockedTimeouts ?? [
+        { timeout: 300, idleAction: "dpms off", returnAction: "dpms on" },
+        { timeout: 300, idleAction: ["systemctl", "suspend-then-hibernate"] }
+    ]
+
+    readonly property bool useLockedTimeouts: root.manualLock && lock.lock.locked
+
     function handleIdleAction(action: var): void {
         if (!action)
             return;
 
-        if (action === "lock")
-            lock.lock.locked = true;
-        else if (action === "unlock")
+        if (action === "lock") {
+            if (!lock.lock.locked) {
+                root.inIdleLockAction = true;
+                lock.lock.locked = true;
+                root.inIdleLockAction = false;
+                root.lockedByIdle = true;
+            }
+            return;
+        }
+        if (action === "unlock") {
             lock.lock.locked = false;
-        else if (typeof action === "string")
+            root.lockedByIdle = false;
+            root.manualLock = false;
+            return;
+        }
+        if (typeof action === "string")
             Hypr.dispatch(action);
         else
             Quickshell.execDetached(action);
+    }
+
+    Connections {
+        target: lock.lock
+
+        function onLockedChanged(): void {
+            if (!lock.lock.locked) {
+                root.lockedByIdle = false;
+                root.manualLock = false;
+                return;
+            }
+            if (!root.inIdleLockAction && !root.lockedByIdle)
+                root.manualLock = true;
+        }
     }
 
     LogindManager {
@@ -68,7 +104,20 @@ Scope {
         IdleMonitor {
             required property var modelData
 
-            enabled: root.enabled && (modelData.enabled ?? true)
+            enabled: root.enabled && !root.useLockedTimeouts && (modelData.enabled ?? true)
+            timeout: modelData.timeout
+            respectInhibitors: modelData.respectInhibitors ?? true
+            onIsIdleChanged: root.handleIdleAction(isIdle ? modelData.idleAction : modelData.returnAction)
+        }
+    }
+
+    Variants {
+        model: root.lockedIdleTimeouts
+
+        IdleMonitor {
+            required property var modelData
+
+            enabled: root.enabled && root.useLockedTimeouts && (modelData.enabled ?? true)
             timeout: modelData.timeout
             respectInhibitors: modelData.respectInhibitors ?? true
             onIsIdleChanged: root.handleIdleAction(isIdle ? modelData.idleAction : modelData.returnAction)

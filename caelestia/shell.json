@@ -7,7 +7,11 @@
             "timeouts": [
                 { "timeout": 1800, "idleAction": "lock" },
                 { "timeout": 2100, "idleAction": "dpms off", "returnAction": "dpms on" },
-                { "timeout": 2400, "idleAction": ["systemctl", "suspend-then-hibernate"] }
+                { "timeout": 2100, "idleAction": ["systemctl", "suspend-then-hibernate"] }
+            ],
+            "lockedTimeouts": [
+                { "timeout": 300, "idleAction": "dpms off", "returnAction": "dpms on" },
+                { "timeout": 300, "idleAction": ["systemctl", "suspend-then-hibernate"] }
             ]
         }
     },
