@@ -46,7 +46,7 @@ StyledWindow {
     readonly property real borderLayoutThickness: hasFullscreen ? 0 : contentItem.Config.border.thickness
 
     readonly property int dragMaskPadding: {
-        if (focusGrab.active || panels.popouts.isDetached)
+        if (focusGrab.active || panels.popouts.isDetached || itemEditOpenHere || panels.windowPicker.killConfirmOpen)
             return 0;
 
         if (monitor?.lastIpcObject.specialWorkspace?.name || monitor?.activeWorkspace?.lastIpcObject.windows > 0)
@@ -71,9 +71,11 @@ StyledWindow {
     name: "drawers"
     WlrLayershell.exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: fsTransitionProg > 0 && contentItem.Config.general.showOverFullscreen ? WlrLayer.Overlay : WlrLayer.Top
-    WlrLayershell.keyboardFocus: visibilities.launcher || visibilities.session || visibilities.windowPicker || panels.dashboard.needsKeyboard || panels.windowPicker.killConfirmOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    readonly property bool itemEditOpenHere: LauncherItemOverrides.editOpen && LauncherItemOverrides.editScreen === screen.name
 
-    mask: hasFullscreen ? emptyRegion : panels.windowPicker.killConfirmOpen ? killConfirmInputMask : regions
+    WlrLayershell.keyboardFocus: visibilities.launcher || visibilities.session || visibilities.windowPicker || itemEditOpenHere || panels.dashboard.needsKeyboard || panels.windowPicker.killConfirmOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
+    mask: hasFullscreen ? emptyRegion : (panels.windowPicker.killConfirmOpen || itemEditOpenHere) ? modalInputMask : regions
 
     anchors.top: true
     anchors.bottom: true
@@ -85,7 +87,7 @@ StyledWindow {
     }
 
     Region {
-        id: killConfirmInputMask
+        id: modalInputMask
 
         x: 0
         y: 0
@@ -123,17 +125,21 @@ StyledWindow {
     HyprlandFocusGrab {
         id: focusGrab
 
-        active: (visibilities.launcher && root.contentItem.Config.launcher.enabled) || visibilities.windowPicker || (visibilities.session && root.contentItem.Config.session.enabled) || (visibilities.sidebar && root.contentItem.Config.sidebar.enabled) || (!root.contentItem.Config.dashboard.showOnHover && visibilities.dashboard && root.contentItem.Config.dashboard.enabled) || (panels.popouts.currentName.startsWith("traymenu") && (panels.popouts.current as StackView)?.depth > 1)
+        active: (visibilities.launcher && root.contentItem.Config.launcher.enabled) || visibilities.windowPicker || LauncherItemOverrides.editOpen || (visibilities.session && root.contentItem.Config.session.enabled) || (visibilities.sidebar && root.contentItem.Config.sidebar.enabled) || (!root.contentItem.Config.dashboard.showOnHover && visibilities.dashboard && root.contentItem.Config.dashboard.enabled) || (panels.popouts.currentName.startsWith("traymenu") && (panels.popouts.current as StackView)?.depth > 1)
         windows: [root]
         onCleared: {
-            visibilities.launcher = false;
-            visibilities.session = false;
-            visibilities.sidebar = false;
-            visibilities.dashboard = false;
-            visibilities.quantumMoon = false;
-            visibilities.windowPicker = false;
-            panels.popouts.hasCurrent = false;
-            bar.closeTray();
+            if (visibilities.launcher)
+                LauncherItemOverrides.launcherClearTimestamp = Date.now();
+            Qt.callLater(() => {
+                visibilities.launcher = false;
+                visibilities.session = false;
+                visibilities.sidebar = false;
+                visibilities.dashboard = false;
+                visibilities.quantumMoon = false;
+                visibilities.windowPicker = false;
+                panels.popouts.hasCurrent = false;
+                bar.closeTray();
+            });
         }
     }
 
@@ -341,6 +347,13 @@ StyledWindow {
 
             Component.onCompleted: Visibilities.bars.set(root.screen, this)
         }
+    }
+
+    LauncherItemEditOverlay {
+        anchors.fill: parent
+        z: 2_000_000
+        screenName: root.screen.name
+        visibilities: visibilities
     }
 
     component PanelBg: BlobRect {

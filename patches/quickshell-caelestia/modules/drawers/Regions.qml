@@ -23,7 +23,7 @@ Region {
     x: immersivePointer ? win.dragMaskPadding : (bar.clampedWidth + win.dragMaskPadding)
     y: clampedThickness + win.dragMaskPadding
     width: win.width - (immersivePointer ? (win.dragMaskPadding * 2 + clampedThickness) : (bar.clampedWidth + win.dragMaskPadding * 2 + clampedThickness))
-    height: win.height - clampedThickness * 2 - win.dragMaskPadding * 2
+    height: immersivePointer ? (win.height - clampedThickness - win.dragMaskPadding) : (win.height - clampedThickness * 2 - win.dragMaskPadding * 2)
     intersection: Intersection.Xor
 
     readonly property real launcherCutoutH: shellReceivesLauncherPointer ? 0 : (root.panels.launcher.height * (1 - root.panels.launcher.offsetScale) + root.borderThickness)
@@ -48,6 +48,14 @@ Region {
         width: shellReceivesLauncherPointer ? 0 : root.panels.launcher.width
         height: root.launcherCutoutH
         intersection: Intersection.Subtract
+    }
+
+    Region {
+        x: root.panels.launcher.x + root.bar.implicitWidth
+        y: root.win.height - root.clampedThickness
+        width: shellReceivesLauncherPointer ? root.panels.launcher.width : 0
+        height: root.clampedThickness
+        intersection: Intersection.Xor
     }
 
     Region {
