@@ -59,7 +59,11 @@ Variants {
             active: Config.background.desktopClock.enabled !== false
 
             anchors.margins: Tokens.padding.large * 2
-            anchors.leftMargin: Tokens.padding.large * 2 + Math.round(Tokens.sizes.bar.innerWidth * LayoutTweaks.barInnerWidthScale) + Math.max(Tokens.padding.smaller, Config.border.thickness)
+            anchors.leftMargin: {
+                const chrome = Math.max(Config.border.minThickness, Config.border.thickness);
+                const barInset = Strings.testRegexList(Config.bar.excludedScreens, win.modelData.name) ? chrome : Math.round(Tokens.sizes.bar.innerWidth * LayoutTweaks.barInnerWidthScale) + Math.max(Tokens.padding.smaller, Config.border.thickness);
+                return Tokens.padding.large * 2 + barInset;
+            }
 
             state: Config.background.desktopClock.position || "bottom-right"
             states: [

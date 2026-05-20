@@ -48,7 +48,7 @@ ColumnLayout {
         if (id === "statusIcons" && Config.bar.popouts.statusIcons) {
             const items = (ch.item as StatusIcons).items;
             const icon = items.childAt(items.width / 2, mapToItem(items, 0, y).y);
-            if (icon) {
+            if (icon && icon.name !== "microphone") {
                 popouts.currentName = icon.name;
                 popouts.currentCenter = Qt.binding(() => icon.mapToItem(root, 0, icon.implicitHeight / 2).y);
                 popouts.hasCurrent = true;

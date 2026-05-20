@@ -16,11 +16,14 @@ Item {
     required property bool fullscreen
 
     readonly property bool disabled: Strings.testRegexList(Config.bar.excludedScreens, screen.name)
+    readonly property int chromeWidth: Math.max(Config.border.minThickness, Config.border.thickness)
 
-    readonly property int clampedWidth: disabled ? implicitWidth : Math.max(Config.border.minThickness, implicitWidth)
+    readonly property int clampedWidth: Math.max(Config.border.minThickness, implicitWidth)
     readonly property int padding: Math.max(Tokens.padding.smaller, Config.border.thickness)
     readonly property int contentWidth: Math.round(Tokens.sizes.bar.innerWidth * LayoutTweaks.barInnerWidthScale) + padding * 2
-    readonly property int exclusiveZone: !disabled && (Config.bar.persistent || visibilities.bar) ? contentWidth : Config.border.thickness
+    readonly property int contentShift: disabled ? contentWidth - chromeWidth : 0
+    readonly property int hyprLeftReserve: disabled ? chromeWidth : clampedWidth
+    readonly property int exclusiveZone: !disabled && (Config.bar.persistent || visibilities.bar) ? contentWidth : chromeWidth
     readonly property bool launcherUiPriority: (visibilities.launcher && Config.launcher.enabled) || visibilities.windowPicker
     readonly property bool shouldBeVisible: !fullscreen && !disabled && (Config.bar.persistent || visibilities.bar || (isHovered && !launcherUiPriority))
     property bool isHovered
@@ -39,7 +42,7 @@ Item {
 
     clip: true
     visible: width > 0
-    implicitWidth: fullscreen ? 0 : (disabled ? 0 : Config.border.thickness)
+    implicitWidth: fullscreen ? 0 : (disabled ? chromeWidth : Config.border.thickness)
 
     states: State {
         name: "visible"
@@ -79,8 +82,9 @@ Item {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: parent.right
+        x: -root.contentShift
 
-        active: root.shouldBeVisible || (!root.disabled && root.visible)
+        active: !root.disabled && (root.shouldBeVisible || root.visible)
         opacity: active ? 1 : 0
 
         sourceComponent: Bar {

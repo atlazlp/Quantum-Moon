@@ -115,15 +115,30 @@ StyledRect {
             }
         }
 
-        // Microphone icon
+        // Microphone icon (click reloads capture; hover does not open the audio popout)
         WrappedLoader {
-            name: "audio"
+            name: "microphone"
             active: Config.bar.status.showMicrophone
 
-            sourceComponent: MaterialIcon {
-                animate: true
-                text: Icons.getMicVolumeIcon(Audio.sourceVolume, Audio.sourceMuted)
-                color: root.colour
+            sourceComponent: Item {
+                implicitWidth: micIcon.implicitWidth
+                implicitHeight: micIcon.implicitHeight
+
+                MaterialIcon {
+                    id: micIcon
+
+                    anchors.centerIn: parent
+                    animate: true
+                    text: Icons.getMicVolumeIcon(Audio.sourceVolume, Audio.sourceMuted)
+                    color: root.colour
+                }
+
+                StateLayer {
+                    anchors.fill: parent
+                    radius: Tokens.rounding.full
+                    color: root.colour
+                    onClicked: Audio.reloadMicrophone()
+                }
             }
         }
 

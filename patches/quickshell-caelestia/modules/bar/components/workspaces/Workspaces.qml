@@ -1,8 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
-import QtQuick.Layouts
 import Quickshell
 import Caelestia.Config
 import qs.components
@@ -21,10 +19,6 @@ StyledClippingRect {
     readonly property int notifCount: Notifs.notClosed.length
     readonly property bool showNotifBadge: root.notifCount > 0 && Config.sidebar.enabled
     readonly property int wide: Math.round(Tokens.sizes.bar.innerWidth * LayoutTweaks.barInnerWidthScale)
-
-    readonly property bool onSpecial: (GlobalConfig.bar.workspaces.perMonitorWorkspaces ? Hypr.monitorFor(screen) : Hypr.focusedMonitor)?.lastIpcObject.specialWorkspace?.name !== ""
-
-    property real blur: onSpecial ? 1 : 0
 
     property real badgeBgOpacity: 1
     property real badgeBgScale: 1
@@ -47,11 +41,6 @@ StyledClippingRect {
             return false;
         const mon = Hypr.monitorFor(screen);
         const monName = mon.name;
-        const specialWs = mon.lastIpcObject.specialWorkspace?.name ?? "";
-        if (specialWs.length > 0) {
-            Hypr.dispatch(`togglespecialworkspace ${specialWs.slice(8)}`);
-            return true;
-        }
         Hypr.dispatch(`focusmonitor ${monName}`);
         const cur = mon.activeWorkspace?.id ?? 1;
         if (angleDelta.y < 0 || cur > 1)
@@ -66,8 +55,8 @@ StyledClippingRect {
         z: -1
         color: Colours.tPalette.m3surfaceContainer
         radius: root.wide * 0.5
-        opacity: root.onSpecial ? 1 : root.badgeBgOpacity
-        scale: root.onSpecial ? 1 : root.badgeBgScale
+        opacity: root.badgeBgOpacity
+        scale: root.badgeBgScale
         transformOrigin: Item.Center
     }
 
@@ -145,10 +134,10 @@ StyledClippingRect {
 
     Component.onCompleted: {
         root.displayNotifCount = root.notifCount > 0 ? root.notifCount : 0;
-        if (root.onSpecial || root.showNotifBadge) {
+        if (root.showNotifBadge) {
             root.badgeBgOpacity = 1;
             root.badgeBgScale = 1;
-            root.badgeNumOpacity = root.showNotifBadge ? 1 : 0;
+            root.badgeNumOpacity = 1;
         } else {
             root.badgeBgOpacity = 0;
             root.badgeBgScale = 0.85;
@@ -164,11 +153,6 @@ StyledClippingRect {
         function onShowNotifBadgeChanged(): void {
             if (!root.notifBootstrapped)
                 return;
-            if (root.onSpecial) {
-                root.prevWantsNotif = root.showNotifBadge;
-                root.badgeNumOpacity = root.showNotifBadge ? 1 : 0;
-                return;
-            }
             if (root.showNotifBadge && !root.prevWantsNotif) {
                 notifExitAnim.stop();
                 root.displayNotifCount = root.notifCount;
@@ -184,110 +168,35 @@ StyledClippingRect {
             if (root.notifCount > 0)
                 root.displayNotifCount = root.notifCount;
         }
-
-        function onOnSpecialChanged(): void {
-            if (!root.notifBootstrapped)
-                return;
-            notifEnterAnim.stop();
-            notifExitAnim.stop();
-            if (root.onSpecial) {
-                root.badgeBgOpacity = 1;
-                root.badgeBgScale = 1;
-                root.badgeNumOpacity = root.showNotifBadge ? 1 : 0;
-            } else if (!root.showNotifBadge) {
-                root.badgeBgOpacity = 0;
-                root.badgeBgScale = 0.85;
-                root.badgeNumOpacity = 0;
-            } else {
-                root.badgeBgOpacity = 1;
-                root.badgeBgScale = 1;
-                root.badgeNumOpacity = 1;
-            }
-        }
     }
 
     Item {
         anchors.fill: parent
-        scale: root.onSpecial ? 0.8 : 1
-        opacity: root.onSpecial ? 0.5 : 1
         visible: !root.fullscreen
 
-        layer.enabled: root.blur > 0
-        layer.effect: MultiEffect {
-            blurEnabled: true
-            blur: root.blur
-            blurMax: 32
-        }
+        StyledText {
+            id: badgeLabel
 
-        Item {
-            id: dotCell
-
+            visible: root.displayNotifCount > 0
+            opacity: root.badgeNumOpacity
             anchors.fill: parent
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            wrapMode: Text.NoWrap
+            text: root.displayNotifCount > 99 ? "99+" : String(root.displayNotifCount)
+            font.pointSize: root.displayNotifCount > 9 ? Math.round(Tokens.font.size.smaller * 0.9) : Tokens.font.size.smaller
+            font.bold: true
+            color: Colours.layer(Colours.palette.m3primary, 2)
+        }
 
-            StyledText {
-                id: badgeLabel
-
-                visible: root.displayNotifCount > 0
-                opacity: root.badgeNumOpacity
-                anchors.fill: parent
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                wrapMode: Text.NoWrap
-                text: root.displayNotifCount > 99 ? "99+" : String(root.displayNotifCount)
-                font.pointSize: root.displayNotifCount > 9 ? Math.round(Tokens.font.size.smaller * 0.9) : Tokens.font.size.smaller
-                font.bold: true
-                color: Colours.layer(Colours.palette.m3primary, 2)
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (Hypr.focusedWorkspace?.toplevels.values.some(t => t.lastIpcObject.fullscreen > 1) ?? false)
+                    return;
+                root.visibilities.sidebar = !root.visibilities.sidebar;
             }
-
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (Hypr.focusedWorkspace?.toplevels.values.some(t => t.lastIpcObject.fullscreen > 1) ?? false)
-                        return;
-                    root.visibilities.sidebar = !root.visibilities.sidebar;
-                }
-            }
-        }
-
-        Behavior on scale {
-            Anim {}
-        }
-
-        Behavior on opacity {
-            Anim {}
-        }
-    }
-
-    Loader {
-        id: specialWs
-
-        asynchronous: true
-
-        anchors.fill: parent
-        anchors.margins: Tokens.padding.small
-
-        active: opacity > 0
-
-        scale: root.onSpecial ? 1 : 0.5
-        opacity: root.onSpecial ? 1 : 0
-
-        sourceComponent: SpecialWorkspaces {
-            screen: root.screen
-        }
-
-        Behavior on scale {
-            Anim {}
-        }
-
-        Behavior on opacity {
-            Anim {}
-        }
-    }
-
-    Behavior on blur {
-        Anim {
-            type: Anim.StandardSmall
         }
     }
 }
