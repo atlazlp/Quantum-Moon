@@ -180,10 +180,14 @@ CustomMouseArea {
             if (!utilitiesShortcutActive)
                 visibilities.utilities = false;
 
-            if (Config.launcher.showOnHover && !launcherShortcutActive)
+            const launcherOpen = visibilities.launcher && Config.launcher.enabled;
+            const pickerOpen = visibilities.windowPicker;
+            const sticky = ProtonGhosts.stickyLauncherUi(launcherOpen, pickerOpen);
+
+            if (Config.launcher.showOnHover && !launcherShortcutActive && !sticky)
                 visibilities.launcher = false;
 
-            if (!windowPickerShortcutActive && (!visibilities.windowPicker || !pickerKeepOpen(mouseX, mouseY)))
+            if (!windowPickerShortcutActive && !sticky && (!visibilities.windowPicker || !pickerKeepOpen(mouseX, mouseY)))
                 visibilities.windowPicker = false;
 
             if (!popouts.currentName.startsWith("traymenu") || ((popouts.current as StackView)?.depth ?? 0) <= 1) {
@@ -226,10 +230,12 @@ CustomMouseArea {
                 bar.isHovered = false;
         }
 
-        if (Config.launcher.showOnHover && launcherOpen && !launcherShortcutActive && !isOverLauncherBounds(x, y))
+        const stickyUi = ProtonGhosts.stickyLauncherUi(launcherOpen, pickerOpen);
+
+        if (Config.launcher.showOnHover && launcherOpen && !launcherShortcutActive && !stickyUi && !isOverLauncherBounds(x, y))
             visibilities.launcher = false;
 
-        if (!Config.launcher.showOnHover && pickerOpen) {
+        if (!Config.launcher.showOnHover && pickerOpen && !stickyUi) {
             const keepPicker = pickerKeepOpen(x, y);
             const animating = (panels.windowPicker.offsetScale ?? 0) > 0.001 && (panels.windowPicker.offsetScale ?? 0) < 0.999;
             if (!windowPickerShortcutActive && !keepPicker && !(animating && inWindowPickerBottomHover(x, y))) {
@@ -326,7 +332,7 @@ CustomMouseArea {
         if (!Config.launcher.showOnHover && pressed && inBottomPanel(panels.launcher, dragStart.x, dragStart.y) && withinPanelWidth(panels.launcher, x, y)) {
             if (dragY < -Config.launcher.dragThreshold)
                 visibilities.launcher = true;
-            else if (dragY > Config.launcher.dragThreshold)
+            else if (dragY > Config.launcher.dragThreshold && !stickyUi)
                 visibilities.launcher = false;
         }
 

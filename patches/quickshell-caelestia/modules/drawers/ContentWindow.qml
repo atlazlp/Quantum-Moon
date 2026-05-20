@@ -122,12 +122,64 @@ StyledWindow {
         shellReceivesWindowPickerPointer: visibilities.windowPicker
     }
 
+    Connections {
+        target: visibilities
+
+        function onLauncherChanged(): void {
+            if (visibilities.launcher && root.contentItem.Config.launcher.enabled)
+                root.restoreShellFocusGrab();
+        }
+
+        function onWindowPickerChanged(): void {
+            if (visibilities.windowPicker)
+                root.restoreShellFocusGrab();
+        }
+    }
+
+    Timer {
+        id: protonGuardWatcher
+
+        interval: 400
+        repeat: true
+        running: visibilities.windowPicker || (visibilities.launcher && root.contentItem.Config.launcher.enabled)
+        property bool lastGuard: ProtonGhosts.shellGuardEnabled()
+
+        onTriggered: {
+            const guard = ProtonGhosts.shellGuardEnabled();
+            if (lastGuard && !guard)
+                root.restoreShellFocusGrab();
+            lastGuard = guard;
+        }
+    }
+
+    function restoreShellFocusGrab(): void {
+        const wantLauncher = visibilities.launcher && root.contentItem.Config.launcher.enabled;
+        const wantPicker = visibilities.windowPicker;
+        if (!wantLauncher && !wantPicker)
+            return;
+        focusGrab.active = false;
+        Qt.callLater(() => {
+            Qt.callLater(() => {
+                if ((visibilities.launcher && root.contentItem.Config.launcher.enabled) || visibilities.windowPicker)
+                    focusGrab.active = true;
+            });
+        });
+    }
+
     HyprlandFocusGrab {
         id: focusGrab
 
         active: (visibilities.launcher && root.contentItem.Config.launcher.enabled) || visibilities.windowPicker || LauncherItemOverrides.editOpen || (visibilities.session && root.contentItem.Config.session.enabled) || (visibilities.sidebar && root.contentItem.Config.sidebar.enabled) || (!root.contentItem.Config.dashboard.showOnHover && visibilities.dashboard && root.contentItem.Config.dashboard.enabled) || (panels.popouts.currentName.startsWith("traymenu") && (panels.popouts.current as StackView)?.depth > 1)
         windows: [root]
         onCleared: {
+            const wantLauncher = visibilities.launcher && root.contentItem.Config.launcher.enabled;
+            const wantPicker = visibilities.windowPicker;
+            if (ProtonGhosts.stickyLauncherUi(wantLauncher, wantPicker)) {
+                if (ProtonGhosts.activeFocusIsGhost())
+                    ProtonGhosts.dismissActiveGhost();
+                root.restoreShellFocusGrab();
+                return;
+            }
             if (visibilities.launcher)
                 LauncherItemOverrides.launcherClearTimestamp = Date.now();
             Qt.callLater(() => {

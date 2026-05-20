@@ -15,12 +15,14 @@ if [[ ! -d "$SRC" ]]; then
 fi
 
 need=( \
+  "$PATCH/modules/Shortcuts.qml" \
   "$PATCH/modules/IdleMonitors.qml" \
   "$PATCH/utils/LayoutTweaks.qml" \
   "$PATCH/services/Screens.qml" \
   "$PATCH/services/Visibilities.qml" \
   "$PATCH/services/QuantumMoon.qml" \
   "$PATCH/services/LauncherItemOverrides.qml" \
+  "$PATCH/services/ProtonGhosts.qml" \
   "$PATCH/services/NotifFocus.qml" \
   "$PATCH/components/DrawerVisibilities.qml" \
   "$PATCH/components/LauncherItemEditOverlay.qml" \
@@ -84,6 +86,7 @@ install -m644 "$PATCH/services/Screens.qml" "$DST/services/Screens.qml"
 install -m644 "$PATCH/services/Visibilities.qml" "$DST/services/Visibilities.qml"
 install -m644 "$PATCH/services/QuantumMoon.qml" "$DST/services/QuantumMoon.qml"
 install -m644 "$PATCH/services/LauncherItemOverrides.qml" "$DST/services/LauncherItemOverrides.qml"
+install -m644 "$PATCH/services/ProtonGhosts.qml" "$DST/services/ProtonGhosts.qml"
 install -m644 "$PATCH/services/NotifFocus.qml" "$DST/services/NotifFocus.qml"
 install -m644 "$PATCH/services/Audio.qml" "$DST/services/Audio.qml"
 install -m644 "$PATCH/shell.qml" "$DST/shell.qml"
@@ -91,6 +94,7 @@ mkdir -p "$DST/components"
 install -m644 "$PATCH/components/DrawerVisibilities.qml" "$DST/components/DrawerVisibilities.qml"
 install -m644 "$PATCH/components/LauncherItemEditOverlay.qml" "$DST/components/LauncherItemEditOverlay.qml"
 mkdir -p "$DST/modules"
+install -m644 "$PATCH/modules/Shortcuts.qml" "$DST/modules/Shortcuts.qml"
 install -m644 "$PATCH/modules/IdleMonitors.qml" "$DST/modules/IdleMonitors.qml"
 mkdir -p "$DST/modules/background"
 install -m644 "$PATCH/modules/background/Background.qml" "$DST/modules/background/Background.qml"

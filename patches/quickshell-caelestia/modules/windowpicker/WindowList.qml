@@ -20,6 +20,8 @@ StyledListView {
 
     property var memoryByPid: ({})
     property int memoryRev: 0
+    property real savedContentY: 0
+    property bool restoreScrollY: false
 
     signal killRequested(var rowData)
 
@@ -49,9 +51,21 @@ StyledListView {
         target: root.visibilities
 
         function onWindowPickerChanged(): void {
-            if (root.visibilities.windowPicker)
+            if (root.visibilities.windowPicker) {
+                root.currentIndex = 0;
+                root.contentY = 0;
                 memProc.running = true;
+            }
         }
+    }
+
+    onMemoryRevChanged: {
+        if (!restoreScrollY)
+            return;
+        Qt.callLater(() => {
+            root.contentY = savedContentY;
+            restoreScrollY = false;
+        });
     }
 
     Process {
@@ -72,6 +86,8 @@ StyledListView {
                     if (pid > 0 && kb >= 0)
                         map[pid] = kb;
                 }
+                root.savedContentY = root.contentY;
+                root.restoreScrollY = true;
                 root.memoryByPid = map;
                 root.memoryRev++;
             }
@@ -80,8 +96,6 @@ StyledListView {
 
     model: ScriptModel {
         id: model
-
-        onValuesChanged: root.currentIndex = 0
 
         values: {
             const _rev = LauncherItemOverrides.revision;
@@ -106,6 +120,8 @@ StyledListView {
             function isListableToplevel(c): bool {
                 const lo = c?.lastIpcObject;
                 if (!lo)
+                    return false;
+                if (ProtonGhosts.isGhostIpcObject(lo))
                     return false;
                 if (lo.mapped === false || lo.hidden === true)
                     return false;
@@ -202,15 +218,6 @@ StyledListView {
                         searchText,
                         title: rawTitle
                     };
-                });
-                rows.sort((a, b) => {
-                    const dr = (b.ramKb ?? 0) - (a.ramKb ?? 0);
-                    if (dr !== 0)
-                        return dr;
-                    const c = a.line.localeCompare(b.line);
-                    if (c !== 0)
-                        return c;
-                    return (a.title || "").localeCompare(b.title || "");
                 });
             }
             if (q)

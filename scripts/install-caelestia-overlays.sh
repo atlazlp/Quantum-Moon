@@ -74,7 +74,7 @@ install -m755 "${ROOT}/scripts/audio-toggle-analog-output.sh" "${DEST_C}/scripts
 install -m755 "${ROOT}/scripts/audio-reload-mic.sh" "${DEST_C}/scripts/audio-reload-mic.sh"
 mkdir -p "${HOME}/.config/wireplumber/wireplumber.conf.d"
 install -m644 "${ROOT}/config/wireplumber/wireplumber.conf.d/51-alsa-analog-ports.conf" "${HOME}/.config/wireplumber/wireplumber.conf.d/51-alsa-analog-ports.conf"
-for s in cursor-clean.sh workspace-overview-toggle.sh window-alt-tab-cycle.sh window_menu.py hypr-focus-window.sh activity-monitor.sh build-hyprspace.sh hypr-group-mouse5.sh hyprresume-save.sh; do
+for s in cursor-clean.sh workspace-overview-toggle.sh window-alt-tab-cycle.sh window_menu.py hypr-focus-window.sh activity-monitor.sh build-hyprspace.sh hypr-group-mouse5.sh hyprresume-save.sh proton-hide-ghost-windows.sh; do
   if [[ -f "${CAE}/scripts/${s}" ]]; then
     install -m755 "${CAE}/scripts/${s}" "${DEST_C}/scripts/${s}"
   fi
