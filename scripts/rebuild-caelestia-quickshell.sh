@@ -35,6 +35,22 @@ mirror_tree() {
 mirror_tree "$DST"
 mirror_tree "$DST/caelestia"
 
+restore_upstream_module() {
+  local dest="$1"
+  local rel="$2"
+  local upstream="/etc/xdg/quickshell/caelestia/${rel}"
+  if [[ ! -f "$PATCH/${rel}" && -f "$upstream" ]]; then
+    mkdir -p "$(dirname "$dest/${rel}")"
+    install -m644 "$upstream" "$dest/${rel}"
+    echo "    restored upstream ${rel} → ${dest}"
+  fi
+}
+
+for base in "$DST" "$DST/caelestia"; do
+  [[ -d "$base" ]] || continue
+  restore_upstream_module "$base" "modules/Shortcuts.qml"
+done
+
 echo "==> Step 3: sanity-check installed ContentWindow (expects launcher mask wiring)"
 for base in "$DST" "$DST/caelestia"; do
   f="$base/modules/drawers/ContentWindow.qml"

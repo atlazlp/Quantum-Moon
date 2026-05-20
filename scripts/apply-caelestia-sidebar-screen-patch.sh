@@ -20,7 +20,10 @@ need=( \
   "$PATCH/services/Screens.qml" \
   "$PATCH/services/Visibilities.qml" \
   "$PATCH/services/QuantumMoon.qml" \
+  "$PATCH/services/LauncherItemOverrides.qml" \
+  "$PATCH/services/NotifFocus.qml" \
   "$PATCH/components/DrawerVisibilities.qml" \
+  "$PATCH/components/LauncherItemEditOverlay.qml" \
   "$PATCH/modules/background/Background.qml" \
   "$PATCH/modules/background/Visualiser.qml" \
   "$PATCH/modules/bar/Bar.qml" \
@@ -40,11 +43,16 @@ need=( \
   "$PATCH/modules/notifications/Content.qml" \
   "$PATCH/modules/notifications/Notification.qml" \
   "$PATCH/modules/launcher/Wrapper.qml" \
+  "$PATCH/modules/launcher/Content.qml" \
+  "$PATCH/modules/launcher/items/AppItem.qml" \
   "$PATCH/modules/sidebar/Wrapper.qml" \
+  "$PATCH/modules/sidebar/NotifActionList.qml" \
+  "$PATCH/modules/sidebar/NotifGroupList.qml" \
   "$PATCH/modules/utilities/Wrapper.qml" \
   "$PATCH/modules/lock/LockSurface.qml" \
   "$PATCH/modules/lock/Fetch.qml" \
   "$PATCH/modules/dashboard/dash/User.qml" \
+  "$PATCH/modules/drawers/Exclusions.qml" \
   "$PATCH/modules/drawers/Panels.qml" \
   "$PATCH/modules/drawers/ContentWindow.qml" \
   "$PATCH/modules/drawers/Interactions.qml" \
@@ -75,10 +83,13 @@ install -m644 "$PATCH/utils/LayoutTweaks.qml" "$DST/utils/LayoutTweaks.qml"
 install -m644 "$PATCH/services/Screens.qml" "$DST/services/Screens.qml"
 install -m644 "$PATCH/services/Visibilities.qml" "$DST/services/Visibilities.qml"
 install -m644 "$PATCH/services/QuantumMoon.qml" "$DST/services/QuantumMoon.qml"
+install -m644 "$PATCH/services/LauncherItemOverrides.qml" "$DST/services/LauncherItemOverrides.qml"
+install -m644 "$PATCH/services/NotifFocus.qml" "$DST/services/NotifFocus.qml"
 install -m644 "$PATCH/services/Audio.qml" "$DST/services/Audio.qml"
 install -m644 "$PATCH/shell.qml" "$DST/shell.qml"
 mkdir -p "$DST/components"
 install -m644 "$PATCH/components/DrawerVisibilities.qml" "$DST/components/DrawerVisibilities.qml"
+install -m644 "$PATCH/components/LauncherItemEditOverlay.qml" "$DST/components/LauncherItemEditOverlay.qml"
 mkdir -p "$DST/modules"
 install -m644 "$PATCH/modules/IdleMonitors.qml" "$DST/modules/IdleMonitors.qml"
 mkdir -p "$DST/modules/background"
@@ -105,12 +116,18 @@ install -m644 "$PATCH/modules/notifications/Content.qml" "$DST/modules/notificat
 install -m644 "$PATCH/modules/notifications/Notification.qml" "$DST/modules/notifications/Notification.qml"
 mkdir -p "$DST/modules/launcher"
 install -m644 "$PATCH/modules/launcher/Wrapper.qml" "$DST/modules/launcher/Wrapper.qml"
+install -m644 "$PATCH/modules/launcher/Content.qml" "$DST/modules/launcher/Content.qml"
+mkdir -p "$DST/modules/launcher/items"
+install -m644 "$PATCH/modules/launcher/items/AppItem.qml" "$DST/modules/launcher/items/AppItem.qml"
 install -m644 "$PATCH/modules/sidebar/Wrapper.qml" "$DST/modules/sidebar/Wrapper.qml"
+install -m644 "$PATCH/modules/sidebar/NotifActionList.qml" "$DST/modules/sidebar/NotifActionList.qml"
+install -m644 "$PATCH/modules/sidebar/NotifGroupList.qml" "$DST/modules/sidebar/NotifGroupList.qml"
 install -m644 "$PATCH/modules/utilities/Wrapper.qml" "$DST/modules/utilities/Wrapper.qml"
 install -m644 "$PATCH/modules/lock/LockSurface.qml" "$DST/modules/lock/LockSurface.qml"
 install -m644 "$PATCH/modules/lock/Fetch.qml" "$DST/modules/lock/Fetch.qml"
 mkdir -p "$DST/modules/dashboard/dash"
 install -m644 "$PATCH/modules/dashboard/dash/User.qml" "$DST/modules/dashboard/dash/User.qml"
+install -m644 "$PATCH/modules/drawers/Exclusions.qml" "$DST/modules/drawers/Exclusions.qml"
 install -m644 "$PATCH/modules/drawers/Panels.qml" "$DST/modules/drawers/Panels.qml"
 install -m644 "$PATCH/modules/drawers/ContentWindow.qml" "$DST/modules/drawers/ContentWindow.qml"
 install -m644 "$PATCH/modules/drawers/Interactions.qml" "$DST/modules/drawers/Interactions.qml"
@@ -129,6 +146,13 @@ if [[ -d "$DST/caelestia/modules" ]]; then
   install -m644 "$PATCH/services/Audio.qml" "$DST/caelestia/services/Audio.qml"
   mkdir -p "$DST/caelestia/modules/bar/popouts"
   install -m644 "$PATCH/modules/bar/popouts/Audio.qml" "$DST/caelestia/modules/bar/popouts/Audio.qml"
+  mkdir -p "$DST/caelestia/modules/bar" "$DST/caelestia/modules/drawers" "$DST/caelestia/modules/background"
+  install -m644 "$PATCH/modules/bar/BarWrapper.qml" "$DST/caelestia/modules/bar/BarWrapper.qml"
+  install -m644 "$PATCH/modules/drawers/Exclusions.qml" "$DST/caelestia/modules/drawers/Exclusions.qml"
+  install -m644 "$PATCH/modules/drawers/ContentWindow.qml" "$DST/caelestia/modules/drawers/ContentWindow.qml"
+  install -m644 "$PATCH/modules/drawers/Panels.qml" "$DST/caelestia/modules/drawers/Panels.qml"
+  install -m644 "$PATCH/modules/drawers/Regions.qml" "$DST/caelestia/modules/drawers/Regions.qml"
+  install -m644 "$PATCH/modules/background/Background.qml" "$DST/caelestia/modules/background/Background.qml"
 fi
 
 echo "Patched user shell at $DST — restart Caelestia (Ctrl+Super+Alt+R or caelestia shell -d)."
