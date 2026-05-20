@@ -4,11 +4,11 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Notifications
 import Caelestia.Config
 import qs.components
 import qs.components.effects
-import qs.modules.launcher.services
 import qs.services
 import qs.utils
 
@@ -28,68 +28,9 @@ StyledRect {
             root.modelData.popup = false;
     }
 
-    function focusAppWindow(): bool {
-        const n = root.modelData.notification;
-        const desktopId = n?.desktopEntry ?? "";
-        const entry = desktopId.length > 0 ? DesktopEntries.applications.values.find(e => e.id === desktopId || e.id === `${desktopId}.desktop`) : DesktopEntries.heuristicLookup(root.modelData.appName);
-
-        const needles = [];
-        if (entry?.id)
-            needles.push(entry.id.replace(/\.desktop$/, "").toLowerCase());
-        if (root.modelData.appName)
-            needles.push(root.modelData.appName.toLowerCase());
-
-        for (const t of Hypr.toplevels.values) {
-            const ipc = t.lastIpcObject;
-            if (!ipc)
-                continue;
-
-            const cls = (ipc.initialClass ?? ipc.class ?? "").toLowerCase();
-            const title = (ipc.title ?? "").toLowerCase();
-            for (const needle of needles) {
-                if (!needle || needle.length < 2)
-                    continue;
-                if (cls.includes(needle) || title.includes(needle)) {
-                    Hypr.dispatch(`focuswindow address:0x${ipc.address.toString(16)}`);
-                    dismissPopup();
-                    return true;
-                }
-            }
-        }
-
-        if (entry) {
-            Apps.launch(entry);
-            dismissPopup();
-            return true;
-        }
-
-        return false;
-    }
-
     function invokePrimaryAction(): bool {
-        const actions = root.modelData.actions ?? [];
-        const defaultAction = actions.find(a => a.identifier === "default");
-        if (defaultAction) {
-            defaultAction.invoke();
-            dismissPopup();
-            return true;
-        }
-
-        const openLabel = /^(view|open|show|reveal|reply|ver|abrir|mostrar|responder)$/i;
-        const openAction = actions.find(a => openLabel.test((a.text ?? "").trim()));
-        if (openAction) {
-            openAction.invoke();
-            dismissPopup();
-            return true;
-        }
-
-        if (actions.length === 1) {
-            actions[0].invoke();
-            dismissPopup();
-            return true;
-        }
-
-        return focusAppWindow();
+        NotifFocus.focus(root.modelData, true);
+        return true;
     }
 
     color: root.modelData.urgency === NotificationUrgency.Critical ? Colours.palette.m3secondaryContainer : Colours.tPalette.m3surfaceContainer
@@ -535,7 +476,7 @@ StyledRect {
                 }
 
                 Repeater {
-                    model: root.modelData.actions
+                    model: NotifFocus.filteredActions(root.modelData.actions)
 
                     delegate: Component {
                         Action {}
