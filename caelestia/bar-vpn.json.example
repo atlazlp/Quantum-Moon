@@ -1,0 +1,5 @@
+{
+    "enabled": true,
+    "connectionName": "your_nmcli_connection_id",
+    "displayName": "Your VPN"
+}

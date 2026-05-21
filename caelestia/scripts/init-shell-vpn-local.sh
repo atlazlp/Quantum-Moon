@@ -9,8 +9,8 @@ usage() {
   cat <<'EOF'
 Usage: init-shell-vpn-local.sh <nmcli_connection_id> [display_name]
 
-Creates caelestia/shell-vpn.local.json (gitignored), merges into
-~/.config/caelestia/shell.json, and removes stale CmxVpn.qml if present.
+Creates caelestia/shell-vpn.local.json (gitignored) and installs
+~/.config/caelestia/bar-vpn.json (Caelestia overwrites shell.json and drops bar.vpn).
 
 Environment (optional):
   VPN_CONNECTION_NAME   nmcli profile id (same as first argument)
@@ -79,7 +79,7 @@ if command -v qs >/dev/null 2>&1; then
 fi
 if command -v caelestia >/dev/null 2>&1; then
   caelestia shell -d >/dev/null 2>&1 &
-  echo "Restarted Caelestia shell (shield uses bar.vpn from shell.json)."
+  echo "Restarted Caelestia shell (shield reads ~/.config/caelestia/bar-vpn.json)."
 else
   echo "Restart the shell when ready: Ctrl+Super+Alt+R or caelestia shell -d"
 fi

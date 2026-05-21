@@ -9,11 +9,18 @@ import Caelestia.Config
 Singleton {
     id: root
 
-    readonly property var vpnConfig: GlobalConfig.bar.vpn
-    readonly property bool configured: (vpnConfig?.enabled ?? false) && String(vpnConfig?.connectionName ?? "").length > 0
-    readonly property string connectionName: String(vpnConfig?.connectionName ?? "")
+    readonly property string configPath: Quickshell.env("HOME") + "/.config/caelestia/bar-vpn.json"
+
+    property var vpnData: ({
+            "enabled": false,
+            "connectionName": "",
+            "displayName": ""
+        })
+
+    readonly property bool configured: (vpnData?.enabled ?? false) && String(vpnData?.connectionName ?? "").length > 0
+    readonly property string connectionName: String(vpnData?.connectionName ?? "")
     readonly property string displayName: {
-        const label = String(vpnConfig?.displayName ?? "");
+        const label = String(vpnData?.displayName ?? "");
         return label.length > 0 ? label : connectionName;
     }
 
@@ -22,6 +29,24 @@ Singleton {
 
     property bool _initialized: false
     property bool _previousConnected: false
+
+    function applyConfig(text: string): void {
+        try {
+            const parsed = JSON.parse(text);
+            root.vpnData = {
+                enabled: parsed?.enabled ?? false,
+                connectionName: String(parsed?.connectionName ?? ""),
+                displayName: String(parsed?.displayName ?? "")
+            };
+        } catch (e) {
+            console.warn("BarVpn: invalid bar-vpn.json:", e);
+            root.vpnData = {
+                enabled: false,
+                connectionName: "",
+                displayName: ""
+            };
+        }
+    }
 
     function refresh(): void {
         if (!configured)
@@ -79,6 +104,26 @@ Singleton {
     }
 
     Component.onCompleted: refresh()
+
+    FileView {
+        id: configFile
+
+        path: root.configPath
+        watchChanges: true
+        printErrors: false
+
+        onLoaded: root.applyConfig(text())
+        onFileChanged: reload()
+        onLoadFailed: err => {
+            if (err !== FileViewError.FileNotFound)
+                console.warn("BarVpn: could not load", root.configPath);
+            root.vpnData = {
+                enabled: false,
+                connectionName: "",
+                displayName: ""
+            };
+        }
+    }
 
     Process {
         id: statusProc

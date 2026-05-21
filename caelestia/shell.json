@@ -43,11 +43,6 @@
             { "id": "statusIcons", "enabled": true },
             { "id": "power", "enabled": true }
         ],
-        "vpn": {
-            "enabled": false,
-            "connectionName": "",
-            "displayName": "VPN"
-        },
         "status": {
             "showVpn": true
         },

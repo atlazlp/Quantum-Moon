@@ -140,9 +140,9 @@ NAUTILUS_BOOKMARKS_FORCE=1 /path/to/Quantum-Moon/scripts/install-nautilus-sideba
 
 ## Bar VPN shield (nmcli)
 
-Quantum Moon adds a **shield** icon on the Caelestia bar (under ethernet). It toggles an **NetworkManager** profile via **`nmcli`**. Connection names are **not** stored in the git repo — only on your machine in a gitignored file.
+Quantum Moon adds a **shield** icon on the Caelestia bar (under ethernet). It toggles an **NetworkManager** profile via **`nmcli`**. Connection names live in **`~/.config/caelestia/bar-vpn.json`** — **not** in **`shell.json`** (Caelestia rewrites **`shell.json`** from the control center and drops unknown keys such as **`bar.vpn`**).
 
-**1. Create or update local VPN config** (from the Quantum Moon clone root):
+**1. Create or update VPN config** (from the Quantum Moon clone root):
 
 ```bash
 /path/to/Quantum-Moon/caelestia/scripts/init-shell-vpn-local.sh <nmcli_connection_id> ["Display name"]
@@ -154,13 +154,27 @@ Example (use the id from **`nmcli -t -f NAME connection show`**):
 /path/to/Quantum-Moon/caelestia/scripts/init-shell-vpn-local.sh my_vpn "My VPN"
 ```
 
-This writes **`caelestia/shell-vpn.local.json`** (gitignored), merges **`bar.vpn`** into **`~/.config/caelestia/shell.json`**, and restarts the shell.
+This writes **`caelestia/shell-vpn.local.json`** (gitignored) and installs **`~/.config/caelestia/bar-vpn.json`**, then restarts the shell.
 
-Overwrite an existing file:
+Overwrite an existing clone-local file:
 
 ```bash
 FORCE=1 /path/to/Quantum-Moon/caelestia/scripts/init-shell-vpn-local.sh my_vpn "My VPN"
 ```
+
+Re-install only **`bar-vpn.json`** after editing **`shell-vpn.local.json`**:
+
+```bash
+/path/to/Quantum-Moon/caelestia/scripts/merge-shell-vpn-local.sh
+```
+
+Check runtime config (this is what the shield uses):
+
+```bash
+jq . ~/.config/caelestia/bar-vpn.json
+```
+
+**`jq '.bar.vpn' ~/.config/caelestia/shell.json`** will stay **`null`** — that is expected.
 
 Optional environment variables instead of arguments: **`VPN_CONNECTION_NAME`**, **`VPN_DISPLAY_NAME`**.
 
@@ -170,7 +184,7 @@ Optional environment variables instead of arguments: **`VPN_CONNECTION_NAME`**, 
 nmcli -t -f NAME connection show
 ```
 
-**3. After pulling Quantum Moon** (Quickshell patches changed): re-apply patches and merge again if needed:
+**3. After pulling Quantum Moon** (Quickshell patches changed): re-apply patches and refresh VPN config:
 
 ```bash
 /path/to/Quantum-Moon/scripts/rebuild-caelestia-quickshell.sh
@@ -179,9 +193,9 @@ nmcli -t -f NAME connection show
 
 Fresh **`install-caelestia-overlays.sh`** runs the merge automatically when **`shell-vpn.local.json`** exists.
 
-**4. Hide the shield** without deleting local config: in **`~/.config/caelestia/shell.json`**, set **`bar.vpn.enabled`** to **`false`**, or **`bar.status.showVpn`** to **`false`**, then restart the shell (**Ctrl+Super+Alt+R**).
+**4. Hide the shield:** set **`"enabled": false`** in **`~/.config/caelestia/bar-vpn.json`**, or **`bar.status.showVpn`** to **`false`** in **`shell.json`**, then restart the shell (**Ctrl+Super+Alt+R**).
 
-Template for manual edit: **`caelestia/shell-vpn.local.json.example`**.
+Templates: **`caelestia/shell-vpn.local.json.example`**, **`caelestia/bar-vpn.json.example`**.
 
 ---
 

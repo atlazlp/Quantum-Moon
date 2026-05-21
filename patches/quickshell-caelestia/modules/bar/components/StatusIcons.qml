@@ -179,7 +179,7 @@ StyledRect {
             }
         }
 
-        // nmcli VPN (shell.json bar.vpn; click toggles; no status popout)
+        // nmcli VPN (~/.config/caelestia/bar-vpn.json; click toggles; no status popout)
         WrappedLoader {
             name: "vpn"
             active: Config.bar.status.showVpn !== false && BarVpn.configured

@@ -142,7 +142,14 @@ apply_slug() {
   local tmp
   tmp="$(mktemp)"
   jq --arg l "${logo_abs}" '.general.logo = $l' "${SHELL_JSON}" >"${tmp}"
-  mv "${tmp}" "${SHELL_JSON}"
+  install -m644 "${tmp}" "${SHELL_JSON}"
+  rm -f "${tmp}"
+
+  local vpn_merge
+  vpn_merge="$(dirname "${QM_ROOT}")/caelestia/scripts/merge-shell-vpn-local.sh"
+  if [[ -x "${vpn_merge}" ]]; then
+    "${vpn_merge}" "$(dirname "${QM_ROOT}")/caelestia" || true
+  fi
 
   write_scheme "${mode_dir}/palette.json"
   if ! python3 "${SCRIPT_DIR}/qm-sync-file-manager-theme.py" "${SCHEME_JSON}"; then
