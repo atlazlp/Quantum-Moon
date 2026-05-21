@@ -13,7 +13,7 @@ resume_displays() {
 	fi
 }
 
-resume_quantum_moon() {
+shuffle_quantum_moon_before_sleep() {
 	local state="${HOME}/.local/state/quantum-moon/state.json"
 	if [[ -f "${state}" ]] && command -v jq >/dev/null 2>&1; then
 		if jq -e '.planetLocked == true' "${state}" >/dev/null 2>&1; then
@@ -33,9 +33,11 @@ command -v dbus-monitor >/dev/null 2>&1 || exit 0
 dbus-monitor --system "type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'" |
 	while read -r line; do
 		case "${line}" in
+		*boolean\ true*)
+			shuffle_quantum_moon_before_sleep
+			;;
 		*boolean\ false*)
 			resume_displays
-			resume_quantum_moon
 			;;
 		esac
 	done
