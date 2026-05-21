@@ -127,6 +127,9 @@ fi
 
 if command -v jq >/dev/null 2>&1; then
   "${ROOT}/quantum-moon/scripts/merge-bar-quantum-moon.sh"
+  if [[ -x "${CAE}/scripts/merge-shell-vpn-local.sh" ]]; then
+    "${CAE}/scripts/merge-shell-vpn-local.sh" "${CAE}"
+  fi
 else
   echo "jq not found: skipped merge-bar-quantum-moon (install jq, then re-run this script)." >&2
 fi

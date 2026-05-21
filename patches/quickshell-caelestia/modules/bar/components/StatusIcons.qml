@@ -179,6 +179,36 @@ StyledRect {
             }
         }
 
+        // nmcli VPN (shell.json bar.vpn; click toggles; no status popout)
+        WrappedLoader {
+            name: "vpn"
+            active: Config.bar.status.showVpn !== false && BarVpn.configured
+
+            sourceComponent: Item {
+                implicitWidth: vpnIcon.implicitWidth
+                implicitHeight: vpnIcon.implicitHeight
+
+                MaterialIcon {
+                    id: vpnIcon
+
+                    anchors.centerIn: parent
+                    animate: true
+                    text: "shield"
+                    fill: BarVpn.connected ? 1 : 0
+                    opacity: BarVpn.busy ? 0.45 : 1
+                    color: root.colour
+                }
+
+                StateLayer {
+                    anchors.fill: parent
+                    radius: Tokens.rounding.full
+                    color: root.colour
+                    enabled: !BarVpn.busy
+                    onClicked: BarVpn.toggle()
+                }
+            }
+        }
+
         // Bluetooth section
         WrappedLoader {
             Layout.preferredHeight: implicitHeight

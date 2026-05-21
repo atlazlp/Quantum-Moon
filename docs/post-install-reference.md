@@ -138,6 +138,53 @@ NAUTILUS_BOOKMARKS_FORCE=1 /path/to/Quantum-Moon/scripts/install-nautilus-sideba
 
 ---
 
+## Bar VPN shield (nmcli)
+
+Quantum Moon adds a **shield** icon on the Caelestia bar (under ethernet). It toggles an **NetworkManager** profile via **`nmcli`**. Connection names are **not** stored in the git repo — only on your machine in a gitignored file.
+
+**1. Create or update local VPN config** (from the Quantum Moon clone root):
+
+```bash
+/path/to/Quantum-Moon/caelestia/scripts/init-shell-vpn-local.sh <nmcli_connection_id> ["Display name"]
+```
+
+Example (use the id from **`nmcli -t -f NAME connection show`**):
+
+```bash
+/path/to/Quantum-Moon/caelestia/scripts/init-shell-vpn-local.sh my_vpn "My VPN"
+```
+
+This writes **`caelestia/shell-vpn.local.json`** (gitignored), merges **`bar.vpn`** into **`~/.config/caelestia/shell.json`**, and restarts the shell.
+
+Overwrite an existing file:
+
+```bash
+FORCE=1 /path/to/Quantum-Moon/caelestia/scripts/init-shell-vpn-local.sh my_vpn "My VPN"
+```
+
+Optional environment variables instead of arguments: **`VPN_CONNECTION_NAME`**, **`VPN_DISPLAY_NAME`**.
+
+**2. NMCLI profile** must exist before the shield can connect. Import/setup is separate (e.g. OpenVPN file + **`nmcli connection import`**). List profiles:
+
+```bash
+nmcli -t -f NAME connection show
+```
+
+**3. After pulling Quantum Moon** (Quickshell patches changed): re-apply patches and merge again if needed:
+
+```bash
+/path/to/Quantum-Moon/scripts/rebuild-caelestia-quickshell.sh
+/path/to/Quantum-Moon/caelestia/scripts/merge-shell-vpn-local.sh
+```
+
+Fresh **`install-caelestia-overlays.sh`** runs the merge automatically when **`shell-vpn.local.json`** exists.
+
+**4. Hide the shield** without deleting local config: in **`~/.config/caelestia/shell.json`**, set **`bar.vpn.enabled`** to **`false`**, or **`bar.status.showVpn`** to **`false`**, then restart the shell (**Ctrl+Super+Alt+R**).
+
+Template for manual edit: **`caelestia/shell-vpn.local.json.example`**.
+
+---
+
 ## Further reading
 
 - [Quantum Moon](https://github.com/atlazlp/Quantum-Moon) (this theme’s source)

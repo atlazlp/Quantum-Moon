@@ -43,6 +43,14 @@
             { "id": "statusIcons", "enabled": true },
             { "id": "power", "enabled": true }
         ],
+        "vpn": {
+            "enabled": false,
+            "connectionName": "",
+            "displayName": "VPN"
+        },
+        "status": {
+            "showVpn": true
+        },
         "workspaces": {
             "perMonitorWorkspaces": true
         }
@@ -64,7 +72,8 @@
     },
     "utilities": {
         "toasts": {
-            "configLoaded": false
+            "configLoaded": false,
+            "vpnChanged": true
         }
     }
 }

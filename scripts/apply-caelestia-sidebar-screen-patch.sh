@@ -24,6 +24,7 @@ need=( \
   "$PATCH/services/LauncherItemOverrides.qml" \
   "$PATCH/services/ProtonGhosts.qml" \
   "$PATCH/services/NotifFocus.qml" \
+  "$PATCH/services/BarVpn.qml" \
   "$PATCH/components/DrawerVisibilities.qml" \
   "$PATCH/components/LauncherItemEditOverlay.qml" \
   "$PATCH/modules/background/Background.qml" \
@@ -89,6 +90,8 @@ install -m644 "$PATCH/services/QuantumMoon.qml" "$DST/services/QuantumMoon.qml"
 install -m644 "$PATCH/services/LauncherItemOverrides.qml" "$DST/services/LauncherItemOverrides.qml"
 install -m644 "$PATCH/services/ProtonGhosts.qml" "$DST/services/ProtonGhosts.qml"
 install -m644 "$PATCH/services/NotifFocus.qml" "$DST/services/NotifFocus.qml"
+install -m644 "$PATCH/services/BarVpn.qml" "$DST/services/BarVpn.qml"
+rm -f "$DST/services/CmxVpn.qml" "$DST/caelestia/services/CmxVpn.qml"
 install -m644 "$PATCH/services/Audio.qml" "$DST/services/Audio.qml"
 install -m644 "$PATCH/shell.qml" "$DST/shell.qml"
 mkdir -p "$DST/components"
