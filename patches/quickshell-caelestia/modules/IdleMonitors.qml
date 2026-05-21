@@ -8,6 +8,7 @@ import Quickshell.Wayland
 import Caelestia.Config
 import Caelestia.Internal
 import qs.services
+import qs.utils
 
 Scope {
     id: root
@@ -17,6 +18,8 @@ Scope {
     property bool pipewirePlaybackActive: false
 
     readonly property string audioMarkerPath: `${Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"}/caelestia-audio-playback.active`
+    readonly property string lockedSleepScript: `${Paths.config}/scripts/locked-sleep-after.sh`
+    readonly property int lockedSleepAfter: GlobalConfig.general.idle.lockedSleepAfter ?? 300
 
     FileView {
         id: audioMarker
@@ -39,34 +42,27 @@ Scope {
 
     readonly property bool enabled: !(GlobalConfig.general.idle.inhibitWhenAudio && (Players.list.some(p => p.isPlaying) || root.pipewirePlaybackActive))
 
-    property bool lockedByIdle: false
-    property bool manualLock: false
-    property bool inIdleLockAction: false
+    function armLockedSleep(): void {
+        if (!root.enabled)
+            return;
+        Quickshell.execDetached(["bash", root.lockedSleepScript, "arm", String(root.lockedSleepAfter)]);
+    }
 
-    readonly property var lockedIdleTimeouts: GlobalConfig.general.idle.lockedTimeouts ?? [
-        { timeout: 300, idleAction: "dpms off", returnAction: "dpms on" },
-        { timeout: 300, idleAction: ["systemctl", "suspend-then-hibernate"] }
-    ]
-
-    readonly property bool useLockedTimeouts: root.manualLock && lock.lock.locked
+    function disarmLockedSleep(): void {
+        Quickshell.execDetached(["bash", root.lockedSleepScript, "disarm"]);
+    }
 
     function handleIdleAction(action: var): void {
         if (!action)
             return;
 
         if (action === "lock") {
-            if (!lock.lock.locked) {
-                root.inIdleLockAction = true;
-                lock.lock.locked = true;
-                root.inIdleLockAction = false;
-                root.lockedByIdle = true;
-            }
+            lock.sessionLock();
             return;
         }
         if (action === "unlock") {
+            root.disarmLockedSleep();
             lock.lock.locked = false;
-            root.lockedByIdle = false;
-            root.manualLock = false;
             return;
         }
         if (typeof action === "string")
@@ -79,13 +75,8 @@ Scope {
         target: lock.lock
 
         function onLockedChanged(): void {
-            if (!lock.lock.locked) {
-                root.lockedByIdle = false;
-                root.manualLock = false;
-                return;
-            }
-            if (!root.inIdleLockAction && !root.lockedByIdle)
-                root.manualLock = true;
+            if (!lock.lock.locked)
+                Hypr.dispatch("dpms on");
         }
     }
 
@@ -94,7 +85,7 @@ Scope {
             if (GlobalConfig.general.idle.lockBeforeSleep)
                 root.lock.lock.locked = true;
         }
-        onLockRequested: root.lock.lock.locked = true
+        onLockRequested: lock.sessionLock()
         onUnlockRequested: root.lock.lock.unlock()
     }
 
@@ -104,20 +95,7 @@ Scope {
         IdleMonitor {
             required property var modelData
 
-            enabled: root.enabled && !root.useLockedTimeouts && (modelData.enabled ?? true)
-            timeout: modelData.timeout
-            respectInhibitors: modelData.respectInhibitors ?? true
-            onIsIdleChanged: root.handleIdleAction(isIdle ? modelData.idleAction : modelData.returnAction)
-        }
-    }
-
-    Variants {
-        model: root.lockedIdleTimeouts
-
-        IdleMonitor {
-            required property var modelData
-
-            enabled: root.enabled && root.useLockedTimeouts && (modelData.enabled ?? true)
+            enabled: root.enabled && !lock.lock.locked && (modelData.enabled ?? true)
             timeout: modelData.timeout
             respectInhibitors: modelData.respectInhibitors ?? true
             onIsIdleChanged: root.handleIdleAction(isIdle ? modelData.idleAction : modelData.returnAction)
@@ -127,7 +105,7 @@ Scope {
     readonly property int quantumMoonShuffleTimeout: GlobalConfig.quantumMoon?.shuffleAfter ?? 300
 
     IdleMonitor {
-        enabled: root.enabled && root.quantumMoonShuffleTimeout > 0
+        enabled: root.enabled && !lock.lock.locked && root.quantumMoonShuffleTimeout > 0
         timeout: root.quantumMoonShuffleTimeout
         respectInhibitors: true
         onIsIdleChanged: {

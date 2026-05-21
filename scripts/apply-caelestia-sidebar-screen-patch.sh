@@ -51,6 +51,7 @@ need=( \
   "$PATCH/modules/sidebar/NotifActionList.qml" \
   "$PATCH/modules/sidebar/NotifGroupList.qml" \
   "$PATCH/modules/utilities/Wrapper.qml" \
+  "$PATCH/modules/lock/Lock.qml" \
   "$PATCH/modules/lock/LockSurface.qml" \
   "$PATCH/modules/lock/Fetch.qml" \
   "$PATCH/modules/dashboard/dash/User.qml" \
@@ -127,6 +128,7 @@ install -m644 "$PATCH/modules/sidebar/Wrapper.qml" "$DST/modules/sidebar/Wrapper
 install -m644 "$PATCH/modules/sidebar/NotifActionList.qml" "$DST/modules/sidebar/NotifActionList.qml"
 install -m644 "$PATCH/modules/sidebar/NotifGroupList.qml" "$DST/modules/sidebar/NotifGroupList.qml"
 install -m644 "$PATCH/modules/utilities/Wrapper.qml" "$DST/modules/utilities/Wrapper.qml"
+install -m644 "$PATCH/modules/lock/Lock.qml" "$DST/modules/lock/Lock.qml"
 install -m644 "$PATCH/modules/lock/LockSurface.qml" "$DST/modules/lock/LockSurface.qml"
 install -m644 "$PATCH/modules/lock/Fetch.qml" "$DST/modules/lock/Fetch.qml"
 mkdir -p "$DST/modules/dashboard/dash"

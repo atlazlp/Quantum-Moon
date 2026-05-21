@@ -6,13 +6,9 @@
             "inhibitWhenAudio": true,
             "timeouts": [
                 { "timeout": 1800, "idleAction": "lock" },
-                { "timeout": 2100, "idleAction": "dpms off", "returnAction": "dpms on" },
-                { "timeout": 2100, "idleAction": ["systemctl", "suspend-then-hibernate"] }
+                { "timeout": 2100, "idleAction": ["systemctl", "suspend"] }
             ],
-            "lockedTimeouts": [
-                { "timeout": 300, "idleAction": "dpms off", "returnAction": "dpms on" },
-                { "timeout": 300, "idleAction": ["systemctl", "suspend-then-hibernate"] }
-            ]
+            "lockedSleepAfter": 300
         }
     },
     "background": {

@@ -4,6 +4,7 @@ set -eu
 poll_s="${INHIBIT_AUDIO_POLL_SEC:-4}"
 rtdir="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
 marker="${CAELESTIA_AUDIO_IDLE_MARKER:-$rtdir/caelestia-audio-playback.active}"
+inhibit_pidfile="${CAELESTIA_AUDIO_INHIBIT_PID:-$rtdir/caelestia-audio-inhibit.pid}"
 
 have_active_sink_input() {
 	command -v pactl >/dev/null 2>&1 || return 1
@@ -41,7 +42,7 @@ cleanup() {
 	if [ -n "${inh_pid}" ]; then
 		kill "${inh_pid}" 2>/dev/null || true
 	fi
-	rm -f "$marker" 2>/dev/null || true
+	rm -f "$marker" "$inhibit_pidfile" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -57,10 +58,11 @@ while :; do
 					--mode=block \
 					sleep infinity &
 				inh_pid=$!
+				echo "${inh_pid}" >"${inhibit_pidfile}" 2>/dev/null || true
 			fi
 		fi
 	else
-		rm -f "$marker" 2>/dev/null || true
+		rm -f "$marker" "${inhibit_pidfile}" 2>/dev/null || true
 		if [ -n "${inh_pid}" ] && kill -0 "${inh_pid}" 2>/dev/null; then
 			kill "${inh_pid}" 2>/dev/null || true
 		fi
