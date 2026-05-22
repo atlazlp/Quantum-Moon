@@ -1,0 +1,12 @@
+[Unit]
+Description=Onboard analog mic loopback fix and echo cancellation
+After=pipewire-pulse.service wireplumber.service
+PartOf=pipewire-pulse.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/caelestia/scripts/audio-setup-analog-mic.sh --quiet
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target

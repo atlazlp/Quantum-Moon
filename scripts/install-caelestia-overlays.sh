@@ -72,8 +72,14 @@ mkdir -p "${DEST_C}" "${DEST_C}/scripts" "${DEST_H}"
 install -m755 "${ROOT}/scripts/inhibit-sleep-while-audio-playback.sh" "${DEST_C}/scripts/inhibit-sleep-while-audio-playback.sh"
 install -m755 "${ROOT}/scripts/audio-toggle-analog-output.sh" "${DEST_C}/scripts/audio-toggle-analog-output.sh"
 install -m755 "${ROOT}/scripts/audio-reload-mic.sh" "${DEST_C}/scripts/audio-reload-mic.sh"
+install -m755 "${ROOT}/scripts/audio-setup-analog-mic.sh" "${DEST_C}/scripts/audio-setup-analog-mic.sh"
 mkdir -p "${HOME}/.config/wireplumber/wireplumber.conf.d"
 install -m644 "${ROOT}/config/wireplumber/wireplumber.conf.d/51-alsa-analog-ports.conf" "${HOME}/.config/wireplumber/wireplumber.conf.d/51-alsa-analog-ports.conf"
+install -m644 "${ROOT}/config/wireplumber/wireplumber.conf.d/52-analog-mic-echo-cancel.conf" "${HOME}/.config/wireplumber/wireplumber.conf.d/52-analog-mic-echo-cancel.conf"
+mkdir -p "${HOME}/.config/systemd/user"
+install -m644 "${ROOT}/config/systemd/user/audio-analog-mic-setup.service" "${HOME}/.config/systemd/user/audio-analog-mic-setup.service"
+systemctl --user daemon-reload 2>/dev/null || true
+systemctl --user enable --now audio-analog-mic-setup.service 2>/dev/null || true
 for s in cursor-clean.sh workspace-overview-toggle.sh window-alt-tab-cycle.sh window_menu.py hypr-focus-window.sh activity-monitor.sh build-hyprspace.sh hypr-group-mouse5.sh hyprresume-save.sh proton-hide-ghost-windows.sh locked-sleep-after.sh suspend-resume-watch.sh; do
   if [[ -f "${CAE}/scripts/${s}" ]]; then
     install -m755 "${CAE}/scripts/${s}" "${DEST_C}/scripts/${s}"
