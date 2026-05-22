@@ -143,8 +143,8 @@ fi
 
 reactivate_source "$source_name"
 
-if pactl get-default-source 2>/dev/null | grep -qvF "$source_name"; then
-	pactl set-default-source "$source_name" 2>/dev/null || true
+if [[ -x "${HOME}/.config/caelestia/scripts/audio-setup-analog-mic.sh" ]]; then
+	"${HOME}/.config/caelestia/scripts/audio-setup-analog-mic.sh" --quiet 2>/dev/null || true
 fi
 
 toast_info "Input: ${label}"
