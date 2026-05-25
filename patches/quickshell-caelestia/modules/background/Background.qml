@@ -17,11 +17,13 @@ Variants {
 
         required property ShellScreen modelData
 
+        readonly property bool useQmSlot: !contentItem.Config.background.wallpaperEnabled && QuantumMoonWallpaper.shouldShowOnScreen(modelData.name)
+
         screen: modelData
         name: "background"
         WlrLayershell.exclusionMode: ExclusionMode.Ignore
-        WlrLayershell.layer: contentItem.Config.background.wallpaperEnabled ? WlrLayer.Background : WlrLayer.Bottom
-        color: contentItem.Config.background.wallpaperEnabled ? "black" : "transparent"
+        WlrLayershell.layer: contentItem.Config.background.wallpaperEnabled || useQmSlot ? WlrLayer.Background : WlrLayer.Bottom
+        color: contentItem.Config.background.wallpaperEnabled || useQmSlot ? "black" : "transparent"
         surfaceFormat.opaque: false
 
         anchors.top: true
@@ -40,9 +42,23 @@ Variants {
                 asynchronous: true
 
                 anchors.fill: parent
-                active: Config.background.wallpaperEnabled
+                active: contentItem.Config.background.wallpaperEnabled || win.useQmSlot
 
-                sourceComponent: Wallpaper {}
+                sourceComponent: contentItem.Config.background.wallpaperEnabled ? caelestiaWallpaper : qmSlotWallpaper
+            }
+
+            Component {
+                id: caelestiaWallpaper
+
+                Wallpaper {}
+            }
+
+            Component {
+                id: qmSlotWallpaper
+
+                SlotWallpaper {
+                    path: QuantumMoonWallpaper.slotPathForScreen(win.modelData.name)
+                }
             }
 
             Visualiser {

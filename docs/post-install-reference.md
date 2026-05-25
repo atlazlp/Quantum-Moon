@@ -83,7 +83,7 @@ Illustrative defaults (confirm in **`$HOME/.local/share/caelestia/hypr`** on you
 | **Ctrl+Super+1…0** | Jump workspace “decades” |
 | **Super+Alt+1…0** | Move window to workspace 1–10 |
 | **Super+S** | Toggle special workspace view (`caelestia toggle specialws`) |
-| **Super+Alt+S** / **Ctrl+Super+S** | Move focused window into/out of `special:special` (`toggle-special-window.sh`) |
+| **Super+Alt+S** / **Ctrl+Super+S** / **Ctrl+Super+Space** | Move focused window into/out of `special:special` (`toggle-special-window.sh`) |
 | **Super+arrows** | Focus direction |
 | **Super+Shift+arrows** | Move window |
 | **Super+Q** | Close |

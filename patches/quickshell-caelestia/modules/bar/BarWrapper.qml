@@ -22,8 +22,8 @@ Item {
     readonly property int padding: Math.max(Tokens.padding.smaller, Config.border.thickness)
     readonly property int contentWidth: Math.round(Tokens.sizes.bar.innerWidth * LayoutTweaks.barInnerWidthScale) + padding * 2
     readonly property int contentShift: disabled ? contentWidth - chromeWidth : 0
-    readonly property int hyprLeftReserve: disabled ? chromeWidth : clampedWidth
-    readonly property int exclusiveZone: !disabled && (Config.bar.persistent || visibilities.bar) ? contentWidth : chromeWidth
+    readonly property int exclusiveZone: !disabled && shouldBeVisible ? contentWidth : chromeWidth
+    readonly property int hyprLeftReserve: exclusiveZone
     readonly property bool launcherUiPriority: (visibilities.launcher && Config.launcher.enabled) || visibilities.windowPicker
     readonly property bool shouldBeVisible: !fullscreen && !disabled && (Config.bar.persistent || visibilities.bar || (isHovered && !launcherUiPriority))
     property bool isHovered
