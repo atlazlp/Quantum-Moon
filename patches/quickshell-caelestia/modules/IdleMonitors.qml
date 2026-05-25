@@ -101,16 +101,4 @@ Scope {
             onIsIdleChanged: root.handleIdleAction(isIdle ? modelData.idleAction : modelData.returnAction)
         }
     }
-
-    readonly property int quantumMoonShuffleTimeout: GlobalConfig.quantumMoon?.shuffleAfter ?? 300
-
-    IdleMonitor {
-        enabled: root.enabled && !lock.lock.locked && root.quantumMoonShuffleTimeout > 0
-        timeout: root.quantumMoonShuffleTimeout
-        respectInhibitors: true
-        onIsIdleChanged: {
-            if (!isIdle && !QuantumMoon.planetLocked)
-                QuantumMoon.startInstant();
-        }
-    }
 }
