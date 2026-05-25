@@ -66,7 +66,7 @@ Scope {
         description: "Toggle launcher on Super release when Super was pressed alone"
         onPressed: root.launcherInterrupted = false
         onReleased: {
-            if (!root.launcherInterrupted && !root.hasFullscreen) {
+            if (!root.launcherInterrupted) {
                 const visibilities = Visibilities.getForActive();
                 visibilities.launcher = !visibilities.launcher;
             }
@@ -111,7 +111,7 @@ Scope {
     IpcHandler {
         function toggle(drawer: string): void {
             if (list().split("\n").includes(drawer)) {
-                if (root.hasFullscreen && ["launcher", "session", "dashboard"].includes(drawer))
+                if (root.hasFullscreen && ["session", "dashboard"].includes(drawer))
                     return;
                 const visibilities = Visibilities.getForActive();
                 visibilities[drawer] = !visibilities[drawer];

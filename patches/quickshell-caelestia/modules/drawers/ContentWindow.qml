@@ -20,17 +20,7 @@ StyledWindow {
     readonly property alias interactionWrapper: interactions
 
     readonly property HyprlandMonitor monitor: Hypr.monitorFor(screen)
-    readonly property bool hasSpecialWorkspace: (monitor?.lastIpcObject.specialWorkspace?.name.length ?? 0) > 0
-    readonly property bool hasFullscreen: {
-        if (hasSpecialWorkspace) {
-            const specialName = monitor?.lastIpcObject.specialWorkspace?.name;
-            if (!specialName)
-                return false;
-            const specialWs = Hypr.workspaces.values.find(ws => ws.name === specialName);
-            return specialWs?.toplevels.values.some(t => t.lastIpcObject.fullscreen > 1) ?? false;
-        }
-        return monitor?.activeWorkspace?.toplevels.values.some(t => t.lastIpcObject.fullscreen > 1) ?? false;
-    }
+    readonly property bool hasFullscreen: monitor?.activeWorkspace?.toplevels.values.some(t => t.lastIpcObject.fullscreen > 1) ?? false
 
     DrawerVisibilities {
         id: visibilities
@@ -38,18 +28,22 @@ StyledWindow {
         Component.onCompleted: Visibilities.load(root.screen, this)
     }
 
-    property real fsTransitionProg: hasFullscreen ? 1 : 0
+    readonly property bool shellImmersiveFullscreen: hasFullscreen && contentItem.Config.general.showOverFullscreen && ((visibilities.launcher && contentItem.Config.launcher.enabled) || visibilities.windowPicker)
+
+    readonly property bool chromeSuppressedFullscreen: hasFullscreen && !shellImmersiveFullscreen
+
+    property real fsTransitionProg: chromeSuppressedFullscreen ? 1 : 0
     readonly property real sdfBorderOffset: 2 * fsTransitionProg // SDFs joins are not exact, so offset by 2px to ensure nothing shows
     readonly property real borderThickness: contentItem.Config.border.thickness * (1 - fsTransitionProg)
     readonly property real borderRounding: contentItem.Config.border.rounding * (1 - fsTransitionProg)
     readonly property real shadowOpacity: 0.7 * (1 - fsTransitionProg)
-    readonly property real borderLayoutThickness: hasFullscreen ? 0 : contentItem.Config.border.thickness
+    readonly property real borderLayoutThickness: chromeSuppressedFullscreen ? 0 : contentItem.Config.border.thickness
 
     readonly property int dragMaskPadding: {
         if (focusGrab.active || panels.popouts.isDetached || itemEditOpenHere || panels.windowPicker.killConfirmOpen)
             return 0;
 
-        if (monitor?.lastIpcObject.specialWorkspace?.name || monitor?.activeWorkspace?.lastIpcObject.windows > 0)
+        if (monitor?.activeWorkspace?.lastIpcObject.windows > 0)
             return 0;
 
         const thresholds = [];
@@ -60,22 +54,28 @@ StyledWindow {
     }
 
     onHasFullscreenChanged: {
-        visibilities.launcher = false;
-        visibilities.session = false;
-        visibilities.dashboard = false;
-        visibilities.quantumMoon = false;
-        visibilities.windowPicker = false;
+        if (contentItem.Config.general.showOverFullscreen) {
+            visibilities.session = false;
+            visibilities.dashboard = false;
+            visibilities.quantumMoon = false;
+        } else {
+            visibilities.launcher = false;
+            visibilities.session = false;
+            visibilities.dashboard = false;
+            visibilities.quantumMoon = false;
+            visibilities.windowPicker = false;
+        }
         panels.popouts.close();
     }
 
     name: "drawers"
     WlrLayershell.exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.layer: fsTransitionProg > 0 && contentItem.Config.general.showOverFullscreen ? WlrLayer.Overlay : WlrLayer.Top
+    WlrLayershell.layer: hasFullscreen && contentItem.Config.general.showOverFullscreen ? WlrLayer.Overlay : WlrLayer.Top
     readonly property bool itemEditOpenHere: LauncherItemOverrides.editOpen && LauncherItemOverrides.editScreen === screen.name
 
     WlrLayershell.keyboardFocus: visibilities.launcher || visibilities.session || visibilities.windowPicker || itemEditOpenHere || panels.dashboard.needsKeyboard || panels.windowPicker.killConfirmOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
-    mask: hasFullscreen ? emptyRegion : (panels.windowPicker.killConfirmOpen || itemEditOpenHere) ? modalInputMask : regions
+    mask: shellImmersiveFullscreen || panels.windowPicker.killConfirmOpen || itemEditOpenHere ? modalInputMask : chromeSuppressedFullscreen ? emptyRegion : regions
 
     anchors.top: true
     anchors.bottom: true
@@ -336,7 +336,7 @@ StyledWindow {
         panels: panels
         bar: bar
         borderThickness: root.borderLayoutThickness
-        fullscreen: root.hasFullscreen
+        fullscreen: root.chromeSuppressedFullscreen
 
         Panels {
             id: panels
@@ -395,7 +395,7 @@ StyledWindow {
             visibilities: visibilities
             popouts: panels.popouts
 
-            fullscreen: root.hasFullscreen
+            fullscreen: root.chromeSuppressedFullscreen
 
             Component.onCompleted: Visibilities.bars.set(root.screen, this)
         }

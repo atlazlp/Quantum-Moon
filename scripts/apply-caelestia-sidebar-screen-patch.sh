@@ -25,6 +25,8 @@ need=( \
   "$PATCH/services/ProtonGhosts.qml" \
   "$PATCH/services/NotifFocus.qml" \
   "$PATCH/services/BarVpn.qml" \
+  "$PATCH/services/Hypr.qml" \
+  "$PATCH/services/NotifData.qml" \
   "$PATCH/components/DrawerVisibilities.qml" \
   "$PATCH/components/LauncherItemEditOverlay.qml" \
   "$PATCH/modules/background/Background.qml" \
@@ -40,7 +42,6 @@ need=( \
   "$PATCH/services/Audio.qml" \
   "$PATCH/modules/bar/components/workspaces/Workspaces.qml" \
   "$PATCH/modules/bar/components/workspaces/Workspace.qml" \
-  "$PATCH/modules/bar/components/workspaces/SpecialWorkspaces.qml" \
   "$PATCH/modules/bar/components/workspaces/ActiveIndicator.qml" \
   "$PATCH/modules/bar/components/workspaces/OccupiedBg.qml" \
   "$PATCH/modules/notifications/Content.qml" \
@@ -91,6 +92,8 @@ install -m644 "$PATCH/services/LauncherItemOverrides.qml" "$DST/services/Launche
 install -m644 "$PATCH/services/ProtonGhosts.qml" "$DST/services/ProtonGhosts.qml"
 install -m644 "$PATCH/services/NotifFocus.qml" "$DST/services/NotifFocus.qml"
 install -m644 "$PATCH/services/BarVpn.qml" "$DST/services/BarVpn.qml"
+install -m644 "$PATCH/services/Hypr.qml" "$DST/services/Hypr.qml"
+install -m644 "$PATCH/services/NotifData.qml" "$DST/services/NotifData.qml"
 rm -f "$DST/services/CmxVpn.qml" "$DST/caelestia/services/CmxVpn.qml"
 install -m644 "$PATCH/services/Audio.qml" "$DST/services/Audio.qml"
 install -m644 "$PATCH/shell.qml" "$DST/shell.qml"
@@ -116,7 +119,7 @@ mkdir -p "$DST/modules/bar/popouts"
 install -m644 "$PATCH/modules/bar/popouts/Audio.qml" "$DST/modules/bar/popouts/Audio.qml"
 install -m644 "$PATCH/modules/bar/components/workspaces/Workspaces.qml" "$DST/modules/bar/components/workspaces/Workspaces.qml"
 install -m644 "$PATCH/modules/bar/components/workspaces/Workspace.qml" "$DST/modules/bar/components/workspaces/Workspace.qml"
-install -m644 "$PATCH/modules/bar/components/workspaces/SpecialWorkspaces.qml" "$DST/modules/bar/components/workspaces/SpecialWorkspaces.qml"
+rm -f "$DST/modules/bar/components/workspaces/SpecialWorkspaces.qml" "$DST/caelestia/modules/bar/components/workspaces/SpecialWorkspaces.qml"
 install -m644 "$PATCH/modules/bar/components/workspaces/ActiveIndicator.qml" "$DST/modules/bar/components/workspaces/ActiveIndicator.qml"
 install -m644 "$PATCH/modules/bar/components/workspaces/OccupiedBg.qml" "$DST/modules/bar/components/workspaces/OccupiedBg.qml"
 mkdir -p "$DST/modules/notifications"
@@ -159,6 +162,9 @@ if [[ -d "$DST/caelestia/modules" ]]; then
   install -m644 "$PATCH/modules/bar/BarWrapper.qml" "$DST/caelestia/modules/bar/BarWrapper.qml"
   install -m644 "$PATCH/modules/drawers/Exclusions.qml" "$DST/caelestia/modules/drawers/Exclusions.qml"
   install -m644 "$PATCH/modules/drawers/ContentWindow.qml" "$DST/caelestia/modules/drawers/ContentWindow.qml"
+  install -m644 "$PATCH/services/Hypr.qml" "$DST/caelestia/services/Hypr.qml"
+  install -m644 "$PATCH/services/NotifData.qml" "$DST/caelestia/services/NotifData.qml"
+  rm -f "$DST/caelestia/modules/bar/components/workspaces/SpecialWorkspaces.qml"
   install -m644 "$PATCH/modules/drawers/Panels.qml" "$DST/caelestia/modules/drawers/Panels.qml"
   install -m644 "$PATCH/modules/drawers/Regions.qml" "$DST/caelestia/modules/drawers/Regions.qml"
   install -m644 "$PATCH/modules/background/Background.qml" "$DST/caelestia/modules/background/Background.qml"

@@ -52,6 +52,8 @@ These differ from stock Caelestia; everything else matches upstream binds unless
 | **Super+Shift+M** | Random Quantum Moon mode (`qm-random`) |
 | **Ctrl+Super+Alt+R** | Restart Quickshell + Caelestia shell + hyprpaper reload + optional mpvpaper sync |
 
+**Super alone (release):** toggles the launcher even over a fullscreen app. The shell uses the overlay layer, grabs pointer focus for the whole screen, and dismisses when you click outside (same as the window picker). Requires **`general.showOverFullscreen": true`** in **`shell.json`** (shipped in this repo) and a Quickshell rebuild after pulling shell patches.
+
 ---
 
 ## Qt (qt6ct)
@@ -80,7 +82,8 @@ Illustrative defaults (confirm in **`$HOME/.local/share/caelestia/hypr`** on you
 | **Super+1…0** | Workspace 1–10 on current monitor |
 | **Ctrl+Super+1…0** | Jump workspace “decades” |
 | **Super+Alt+1…0** | Move window to workspace 1–10 |
-| **Super+S** / **Super+Alt+S** | Special workspace toggle / move window |
+| **Super+S** | Toggle special workspace view (`caelestia toggle specialws`) |
+| **Super+Alt+S** / **Ctrl+Super+S** | Move focused window into/out of `special:special` (`toggle-special-window.sh`) |
 | **Super+arrows** | Focus direction |
 | **Super+Shift+arrows** | Move window |
 | **Super+Q** | Close |
