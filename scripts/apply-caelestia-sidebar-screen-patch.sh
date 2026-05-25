@@ -27,10 +27,12 @@ need=( \
   "$PATCH/services/BarVpn.qml" \
   "$PATCH/services/Hypr.qml" \
   "$PATCH/services/NotifData.qml" \
+  "$PATCH/services/QuantumMoonWallpaper.qml" \
   "$PATCH/components/DrawerVisibilities.qml" \
   "$PATCH/components/LauncherItemEditOverlay.qml" \
   "$PATCH/modules/background/Background.qml" \
   "$PATCH/modules/background/Visualiser.qml" \
+  "$PATCH/modules/background/SlotWallpaper.qml" \
   "$PATCH/modules/bar/Bar.qml" \
   "$PATCH/modules/bar/BarWrapper.qml" \
   "$PATCH/modules/bar/components/ActiveWindow.qml" \
@@ -94,6 +96,7 @@ install -m644 "$PATCH/services/NotifFocus.qml" "$DST/services/NotifFocus.qml"
 install -m644 "$PATCH/services/BarVpn.qml" "$DST/services/BarVpn.qml"
 install -m644 "$PATCH/services/Hypr.qml" "$DST/services/Hypr.qml"
 install -m644 "$PATCH/services/NotifData.qml" "$DST/services/NotifData.qml"
+install -m644 "$PATCH/services/QuantumMoonWallpaper.qml" "$DST/services/QuantumMoonWallpaper.qml"
 rm -f "$DST/services/CmxVpn.qml" "$DST/caelestia/services/CmxVpn.qml"
 install -m644 "$PATCH/services/Audio.qml" "$DST/services/Audio.qml"
 install -m644 "$PATCH/shell.qml" "$DST/shell.qml"
@@ -106,6 +109,7 @@ install -m644 "$PATCH/modules/IdleMonitors.qml" "$DST/modules/IdleMonitors.qml"
 mkdir -p "$DST/modules/background"
 install -m644 "$PATCH/modules/background/Background.qml" "$DST/modules/background/Background.qml"
 install -m644 "$PATCH/modules/background/Visualiser.qml" "$DST/modules/background/Visualiser.qml"
+install -m644 "$PATCH/modules/background/SlotWallpaper.qml" "$DST/modules/background/SlotWallpaper.qml"
 mkdir -p "$DST/modules/bar/components/workspaces"
 install -m644 "$PATCH/modules/bar/Bar.qml" "$DST/modules/bar/Bar.qml"
 install -m644 "$PATCH/modules/bar/BarWrapper.qml" "$DST/modules/bar/BarWrapper.qml"
@@ -168,6 +172,8 @@ if [[ -d "$DST/caelestia/modules" ]]; then
   install -m644 "$PATCH/modules/drawers/Panels.qml" "$DST/caelestia/modules/drawers/Panels.qml"
   install -m644 "$PATCH/modules/drawers/Regions.qml" "$DST/caelestia/modules/drawers/Regions.qml"
   install -m644 "$PATCH/modules/background/Background.qml" "$DST/caelestia/modules/background/Background.qml"
+  install -m644 "$PATCH/modules/background/SlotWallpaper.qml" "$DST/caelestia/modules/background/SlotWallpaper.qml"
+  install -m644 "$PATCH/services/QuantumMoonWallpaper.qml" "$DST/caelestia/services/QuantumMoonWallpaper.qml"
 fi
 
 echo "Patched user shell at $DST — restart Caelestia (Ctrl+Super+Alt+R or caelestia shell -d)."

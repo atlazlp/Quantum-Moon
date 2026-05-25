@@ -14,7 +14,7 @@ Scope {
 
     ExclusionZone {
         anchors.left: true
-        exclusiveZone: root.bar.hyprLeftReserve
+        exclusiveZone: root.bar.exclusiveZone
     }
 
     ExclusionZone {
