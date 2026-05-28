@@ -29,6 +29,7 @@ CustomMouseArea {
     property bool dashboardShortcutActive
     property bool quantumMoonShortcutActive
     property bool osdShortcutActive
+    property bool sidebarShortcutActive
     property bool utilitiesShortcutActive
 
     function inStableBottomPanelZone(y: real): bool {
@@ -66,6 +67,12 @@ CustomMouseArea {
 
     function inRightPanel(panel: Item, x: real, y: real): bool {
         return x > Math.min(width - Config.border.minThickness, bar.implicitWidth + panel.x) && withinPanelHeight(panel, x, y);
+    }
+
+    function inSidebarBounds(x: real, y: real): bool {
+        if (!sidebarAllowedOnThisOutput)
+            return false;
+        return inRightPanel(panels.sidebar, x, y) && withinPanelHeight(panels.sidebar, x, y);
     }
 
     function inTopPanel(panel: Item, x: real, y: real): bool {
@@ -126,7 +133,7 @@ CustomMouseArea {
         if (panelHeight <= 0)
             return false;
         const top = borderThickness + p.y + (p.height - panelHeight);
-        return y >= top && y <= height;
+        return y >= top && y <= top + panelHeight;
     }
 
     function pickerKeepOpen(x: real, y: real): bool {
@@ -162,7 +169,13 @@ CustomMouseArea {
     enabled: !LauncherItemOverrides.editOpen
     hoverEnabled: true
 
-    onPressed: event => dragStart = Qt.point(event.x, event.y)
+    onPressed: event => {
+        dragStart = Qt.point(event.x, event.y);
+        if (visibilities.sidebar && !inSidebarBounds(event.x, event.y)) {
+            visibilities.sidebar = false;
+            sidebarShortcutActive = false;
+        }
+    }
     onContainsMouseChanged: {
         if (!containsMouse) {
             // Only hide if not activated by shortcut
@@ -180,14 +193,13 @@ CustomMouseArea {
             if (!utilitiesShortcutActive)
                 visibilities.utilities = false;
 
-            const launcherOpen = visibilities.launcher && Config.launcher.enabled;
-            const pickerOpen = visibilities.windowPicker;
-            const sticky = ProtonGhosts.stickyLauncherUi(launcherOpen, pickerOpen);
+            if (!sidebarShortcutActive)
+                visibilities.sidebar = false;
 
-            if (Config.launcher.showOnHover && !launcherShortcutActive && !sticky)
+            if (Config.launcher.showOnHover && !launcherShortcutActive && !ProtonGhosts.stickyLauncherUi(visibilities.launcher && Config.launcher.enabled, visibilities.windowPicker))
                 visibilities.launcher = false;
 
-            if (!windowPickerShortcutActive && !sticky && (!visibilities.windowPicker || !pickerKeepOpen(mouseX, mouseY)))
+            if (!windowPickerShortcutActive && (!visibilities.windowPicker || !pickerKeepOpen(mouseX, mouseY)))
                 visibilities.windowPicker = false;
 
             if (!popouts.currentName.startsWith("traymenu") || ((popouts.current as StackView)?.depth ?? 0) <= 1) {
@@ -215,6 +227,14 @@ CustomMouseArea {
             return;
         }
 
+        if (visibilities.sidebar && sidebarAllowedOnThisOutput) {
+            const inSidebar = inSidebarBounds(x, y);
+            if (!sidebarShortcutActive && !inSidebar)
+                visibilities.sidebar = false;
+            else if (sidebarShortcutActive && inSidebar)
+                sidebarShortcutActive = false;
+        }
+
         if (Config.launcher.showOnHover && !visibilities.launcher && inBottomPanel(panels.launcher, x, y) && canOpenWindowPicker())
             visibilities.launcher = true;
 
@@ -230,12 +250,10 @@ CustomMouseArea {
                 bar.isHovered = false;
         }
 
-        const stickyUi = ProtonGhosts.stickyLauncherUi(launcherOpen, pickerOpen);
-
-        if (Config.launcher.showOnHover && launcherOpen && !launcherShortcutActive && !stickyUi && !isOverLauncherBounds(x, y))
+        if (Config.launcher.showOnHover && launcherOpen && !launcherShortcutActive && !ProtonGhosts.stickyLauncherUi(launcherOpen, pickerOpen) && !isOverLauncherBounds(x, y))
             visibilities.launcher = false;
 
-        if (!Config.launcher.showOnHover && pickerOpen && !stickyUi) {
+        if (!Config.launcher.showOnHover && pickerOpen) {
             const keepPicker = pickerKeepOpen(x, y);
             const animating = (panels.windowPicker.offsetScale ?? 0) > 0.001 && (panels.windowPicker.offsetScale ?? 0) < 0.999;
             if (!windowPickerShortcutActive && !keepPicker && !(animating && inWindowPickerBottomHover(x, y))) {
@@ -332,7 +350,7 @@ CustomMouseArea {
         if (!Config.launcher.showOnHover && pressed && inBottomPanel(panels.launcher, dragStart.x, dragStart.y) && withinPanelWidth(panels.launcher, x, y)) {
             if (dragY < -Config.launcher.dragThreshold)
                 visibilities.launcher = true;
-            else if (dragY > Config.launcher.dragThreshold && !stickyUi)
+            else if (dragY > Config.launcher.dragThreshold && !ProtonGhosts.stickyLauncherUi(launcherOpen, pickerOpen))
                 visibilities.launcher = false;
         }
 
@@ -387,6 +405,19 @@ CustomMouseArea {
         } else if (!launcherPriority && (!popouts.currentName.startsWith("traymenu") || ((popouts.current as StackView)?.depth ?? 0) <= 1) && !inLeftPanel(panels.popoutsWrapper, x, y)) {
             popouts.hasCurrent = false;
             bar.closeTray();
+        }
+    }
+
+    Connections {
+        target: panels.windowPicker
+
+        function onPointerInsideChanged(): void {
+            if (panels.windowPicker.pointerInside || !root.visibilities.windowPicker)
+                return;
+            if (Config.launcher.showOnHover || root.windowPickerShortcutActive)
+                return;
+            if (!root.pickerKeepOpen(root.mouseX, root.mouseY))
+                root.visibilities.windowPicker = false;
         }
     }
 
@@ -480,6 +511,15 @@ CustomMouseArea {
             } else {
                 // Utilities hidden, clear shortcut flag
                 root.utilitiesShortcutActive = false;
+            }
+        }
+
+        function onSidebarChanged() {
+            if (root.visibilities.sidebar) {
+                if (!root.inSidebarBounds(root.mouseX, root.mouseY))
+                    root.sidebarShortcutActive = true;
+            } else {
+                root.sidebarShortcutActive = false;
             }
         }
 

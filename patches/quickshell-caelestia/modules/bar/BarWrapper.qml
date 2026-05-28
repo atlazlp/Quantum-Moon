@@ -40,6 +40,14 @@ Item {
         (content.item as Bar)?.handleWheel(globalY, barX, barY, angleDelta);
     }
 
+    MouseArea {
+        anchors.fill: parent
+        z: 100
+        enabled: root.visibilities.sidebar && Config.sidebar.enabled
+        propagateComposedEvents: true
+        onPressed: root.visibilities.sidebar = false
+    }
+
     clip: true
     visible: width > 0
     implicitWidth: fullscreen ? 0 : (disabled ? chromeWidth : Config.border.thickness)
