@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import Caelestia.Config
@@ -190,44 +191,44 @@ Item {
             // --- Credentials ---
             StyledText { text: qsTr("Credentials"); font.weight: 500 }
 
-            _LabeledField {
+            LabeledField {
                 label: qsTr("Personal Access Token")
                 hint: qsTr("Required scopes: Code (Read), Graph (Read)")
                 isPassword: true
                 value: root._pat
-                onValueChanged: val => { root._pat = val }
+                onEdited: val => { root._pat = val }
             }
 
-            _LabeledField {
+            LabeledField {
                 label: qsTr("Organization URL")
                 hint: qsTr("e.g. https://dev.azure.com/myorg")
                 value: root._orgUrl
-                onValueChanged: val => { root._orgUrl = val }
+                onEdited: val => { root._orgUrl = val }
             }
 
-            _LabeledField {
+            LabeledField {
                 label: qsTr("Project")
                 hint: qsTr("e.g. Cambio")
                 value: root._project
-                onValueChanged: val => { root._project = val }
+                onEdited: val => { root._project = val }
             }
 
-            _LabeledField {
+            LabeledField {
                 label: qsTr("My identity (email / UPN)")
                 hint: qsTr("Used to detect mentions and owned PRs")
                 value: root._identity
-                onValueChanged: val => { root._identity = val }
+                onEdited: val => { root._identity = val }
             }
 
             // --- Poll interval ---
             StyledText { text: qsTr("Polling"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
-            _LabeledField {
+            LabeledField {
                 label: qsTr("Poll interval (seconds)")
                 hint: qsTr("How often to check for new PRs (minimum 10)")
                 isNumber: true
                 value: root._pollInterval.toString()
-                onValueChanged: val => {
+                onEdited: val => {
                     const n = parseInt(val);
                     if (!isNaN(n)) root._pollInterval = Math.max(10, n);
                 }
@@ -254,12 +255,12 @@ Item {
                 onToggled: checked => root._notifyMention = checked
             }
 
-            _LabeledField {
+            LabeledField {
                 label: qsTr("Overdue threshold (minutes)")
                 hint: qsTr("PRs older than this trigger a persistent notification")
                 isNumber: true
                 value: root._overdueMinutes.toString()
-                onValueChanged: val => {
+                onEdited: val => {
                     const n = parseInt(val);
                     if (!isNaN(n)) root._overdueMinutes = Math.max(1, n);
                 }
@@ -268,18 +269,18 @@ Item {
             // --- Colors ---
             StyledText { text: qsTr("Colors"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
-            _LabeledField {
+            LabeledField {
                 label: qsTr("Overdue color")
                 hint: qsTr("CSS hex color, e.g. #ff9500")
                 value: root._overdueColor
-                onValueChanged: val => root._overdueColor = val
+                onEdited: val => root._overdueColor = val
             }
 
-            _LabeledField {
+            LabeledField {
                 label: qsTr("Mention color")
                 hint: qsTr("CSS hex color, e.g. #e53935")
                 value: root._mentionColor
-                onValueChanged: val => root._mentionColor = val
+                onEdited: val => root._mentionColor = val
             }
 
             // --- Repos ---
@@ -352,7 +353,7 @@ Item {
     // -----------------------------------------------------------------------
     // Internal labeled text field component
     // -----------------------------------------------------------------------
-    component _LabeledField: ColumnLayout {
+    component LabeledField: ColumnLayout {
         id: lf
 
         property string label: ""
@@ -361,7 +362,7 @@ Item {
         property bool isPassword: false
         property bool isNumber: false
 
-        signal valueChanged(string val)
+        signal edited(string val)
 
         Layout.fillWidth: true
         spacing: 2
@@ -392,7 +393,7 @@ Item {
                 inputMethodHints: lf.isNumber ? Qt.ImhDigitsOnly : Qt.ImhNone
                 placeholderText: lf.hint
 
-                onTextEdited: lf.valueChanged(text)
+                onTextEdited: lf.edited(text)
             }
         }
     }
