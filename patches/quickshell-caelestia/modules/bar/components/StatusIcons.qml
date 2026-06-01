@@ -225,18 +225,19 @@ StyledRect {
 
                     anchors.centerIn: parent
                     animate: true
-                    text: "all_inclusive"
-                    fill: GitWatcher.prs.length > 0 ? 1 : 0
-                    color: {
-                        if (GitWatcher.overdueCount > 0)
-                            return GitWatcher._configData?.colors?.overdue ?? "#ff9500";
-                        if (GitWatcher.mentionCount > 0)
-                            return GitWatcher._configData?.colors?.mention ?? "#e53935";
-                        return root.colour;
+                    fill: 1
+                    text: {
+                        if (GitWatcher.overdueCount > 0) return "data_alert";
+                        if (GitWatcher.prs.length > 0) return "data_info_alert";
+                        return "check";
                     }
+                    color: GitWatcher.overdueCount > 0
+                        ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")
+                        : root.colour
 
+                    // Pulse only when there are overdue PRs
                     SequentialAnimation on opacity {
-                        running: GitWatcher.overdueCount > 0 || GitWatcher.mentionCount > 0
+                        running: GitWatcher.overdueCount > 0
                         loops: Animation.Infinite
                         alwaysRunToEnd: true
 
@@ -255,7 +256,8 @@ StyledRect {
                     }
                 }
 
-                // Notification dot — mentions or unread comments
+                // Notification dot — mentions/comments, bottom-left to avoid
+                // overlapping the top-right dot that the data_info_alert icon has
                 Rectangle {
                     visible: GitWatcher.mentionCount > 0
 
@@ -265,10 +267,10 @@ StyledRect {
 
                     color: GitWatcher._configData?.colors?.mention ?? "#e53935"
 
-                    anchors.top: gwIcon.top
-                    anchors.right: gwIcon.right
-                    anchors.topMargin: 1
-                    anchors.rightMargin: 1
+                    anchors.bottom: gwIcon.bottom
+                    anchors.left: gwIcon.left
+                    anchors.bottomMargin: 1
+                    anchors.leftMargin: 1
                 }
 
                 StateLayer {

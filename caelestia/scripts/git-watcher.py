@@ -134,10 +134,10 @@ def fetch_all_repos_grouped() -> list[dict]:
     for proj in projects:
         repos = fetch_repos_for_project(proj)
         if repos:
-            result.append({
-                "project": proj,
-                "repos": [{"id": r["id"], "name": r["name"]} for r in repos],
-            })
+            valid = [{"id": r["id"], "name": r["name"]}
+                     for r in repos if r.get("id") and r.get("name")]
+            if valid:
+                result.append({"project": proj, "repos": valid})
     return result
 
 
@@ -325,7 +325,7 @@ def _poll() -> dict:
 
             prs = fetch_active_prs(project, repo["id"])
             for pr in prs:
-                pr_id = pr["id"]
+                pr_id = pr["pullRequestId"]
                 active_pr_ids.add(pr_id)
 
                 created_at = pr.get("creationDate", "")
@@ -333,10 +333,19 @@ def _poll() -> dict:
                     _pr_first_seen[pr_id] = datetime.now(timezone.utc)
 
                 age_min = _age_minutes(created_at)
+                # lastMergeSourceCommit.author.date = when author last pushed to the branch
+                # Falls back to creationDate if no commits have been pushed yet
+                last_source_commit = pr.get("lastMergeSourceCommit") or {}
+                last_commit_date = (last_source_commit.get("author") or {}).get("date") or created_at
+                stall_min = _age_minutes(last_commit_date)
                 is_owned = _is_owned(pr)
                 is_reviewer = _is_reviewer(pr)
-                last_updated = pr.get("lastMergeSourceCommit", {}).get("commitId") or pr.get("lastUpdatedDate", "")
+                # Use commit ID as change-tracking key for thread polling
+                last_updated_commit = last_source_commit.get("commitId", "")
                 pr_url = _pr_url(project, repo["name"], pr_id)
+
+                # PR is approved when at least one reviewer voted ≥ 5 (approved with suggestions or better)
+                is_approved = any(r.get("vote", 0) >= 5 for r in pr.get("reviewers", []))
 
                 # Detect new PR
                 if pr_id not in _seen_pr_ids:
@@ -348,23 +357,30 @@ def _poll() -> dict:
                             f"{repo['name']} → {_strip_branch(pr.get('targetRefName', ''))} | {branch}",
                         )
 
-                # Detect overdue
-                if age_min >= overdue_minutes and pr_id not in _overdue_notified:
+                # Overdue = no approval AND stalled (no activity) for > threshold
+                # This covers both "waiting for approval" and "waiting for author to
+                # respond to a comment/mention with a new commit"
+                is_overdue = stall_min >= overdue_minutes and not is_approved
+                if is_overdue and pr_id not in _overdue_notified:
                     _overdue_notified.add(pr_id)
+                    h, m = int(stall_min // 60), int(stall_min % 60)
                     _notify_critical_with_action(
-                        f"PR waiting {int(age_min // 60)}h {int(age_min % 60)}m",
+                        f"PR stalled {h}h {m}m without activity",
                         f"{pr['title'][:60]}\n{repo['name']}",
                         pr_url,
                     )
+                elif not is_overdue:
+                    # Reset notification flag if PR becomes active again
+                    _overdue_notified.discard(pr_id)
 
                 # Check threads for comments/mentions (only when PR updated or first time)
                 has_unread_comments = False
                 has_mentions = False
                 prev_updated = _pr_last_updated.get(pr_id)
-                threads_changed = prev_updated != last_updated
+                threads_changed = prev_updated != last_updated_commit
 
                 if threads_changed and (is_owned or is_reviewer):
-                    _pr_last_updated[pr_id] = last_updated
+                    _pr_last_updated[pr_id] = last_updated_commit
                     threads = fetch_pr_threads(project, repo["id"], pr_id)
                     for thread in threads:
                         if thread.get("isDeleted"):
@@ -406,7 +422,7 @@ def _poll() -> dict:
                             has_mentions = prev.get("hasMentions", False)
                             break
 
-                if age_min >= overdue_minutes:
+                if is_overdue:
                     overdue_count += 1
                 if has_mentions:
                     mention_count += 1
@@ -422,6 +438,9 @@ def _poll() -> dict:
                     "createdAt": created_at,
                     "url": pr_url,
                     "ageMinutes": int(age_min),
+                    "stallMinutes": int(stall_min),
+                    "isOverdue": is_overdue,
+                    "isApproved": is_approved,
                     "hasUnreadComments": has_unread_comments,
                     "hasMentions": has_mentions,
                     "isOwned": is_owned,

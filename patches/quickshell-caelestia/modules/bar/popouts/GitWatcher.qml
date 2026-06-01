@@ -33,9 +33,13 @@ Item {
             spacing: Tokens.spacing.small
 
             MaterialIcon {
-                text: "all_inclusive"
+                text: GitWatcher.overdueCount > 0 ? "data_alert"
+                    : GitWatcher.prs.length > 0 ? "data_info_alert"
+                    : "check"
                 fill: 1
-                color: Colours.palette.m3secondary
+                color: GitWatcher.overdueCount > 0
+                    ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")
+                    : Colours.palette.m3secondary
             }
 
             StyledText {
@@ -125,7 +129,7 @@ Item {
                     width: prList.width
                     implicitHeight: prRowLayout.implicitHeight + Tokens.padding.small * 2
 
-                    readonly property bool isOverdue: modelData.ageMinutes >= (GitWatcher._configData?.notifications?.overdueMinutes ?? 60)
+                    readonly property bool isOverdue: modelData.isOverdue ?? false
 
                     StyledRect {
                         anchors.fill: parent
@@ -196,9 +200,11 @@ Item {
                             }
                         }
 
-                        // Age label
+                        // Age / stall label
                         StyledText {
-                            text: _formatAge(prRow.modelData.ageMinutes)
+                            text: prRow.isOverdue
+                                ? qsTr("stalled %1").arg(_formatAge(prRow.modelData.stallMinutes ?? prRow.modelData.ageMinutes))
+                                : _formatAge(prRow.modelData.ageMinutes)
                             font.pixelSize: Tokens.font.sizes.small
                             color: prRow.isOverdue
                                 ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")

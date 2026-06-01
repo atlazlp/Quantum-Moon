@@ -23,11 +23,12 @@ Item {
     // [{project: "...", repos: [{id, name}]}]
     property var _projectRepos: []
 
-    implicitWidth: 360
-    implicitHeight: Math.min(outerScroll.contentHeight + Tokens.padding.large * 2, 560)
+    // Fixed width; height capped so it never overflows
+    implicitWidth: 480
+    implicitHeight: Math.min(scrollContent.implicitHeight + Tokens.padding.large * 2 + actionBar.implicitHeight + Tokens.spacing.normal, 580)
 
     // -----------------------------------------------------------------------
-    // Load config and repos on open
+    // File loading
     // -----------------------------------------------------------------------
     FileView {
         id: cfgFile
@@ -67,18 +68,19 @@ Item {
     // Form state
     // -----------------------------------------------------------------------
     property string _pat: ""
+    property bool   _patVisible: false
     property string _orgUrl: ""
     property string _project: ""
     property string _identity: ""
-    property int _pollInterval: 60
-    property int _overdueMinutes: 60
-    property bool _notifyNewPr: true
-    property bool _notifyComment: true
-    property bool _notifyMention: true
+    property int    _pollInterval: 60
+    property int    _overdueMinutes: 60
+    property bool   _notifyNewPr: true
+    property bool   _notifyComment: true
+    property bool   _notifyMention: true
     property string _overdueColor: "#ff9500"
     property string _mentionColor: "#e53935"
-    // Set of "Project/repoName" strings that are IGNORED (excluded from watching)
-    property var _ignoredSet: ({})
+    // Plain JS object used as a set: "Project/repoName" → true
+    property var    _ignoredSet: ({})
 
     function _syncFormFromCfg(): void {
         _pat = _cfg.pat ?? "";
@@ -92,33 +94,25 @@ Item {
         _notifyMention = _cfg.notifications?.prMention ?? true;
         _overdueColor = _cfg.colors?.overdue ?? "#ff9500";
         _mentionColor = _cfg.colors?.mention ?? "#e53935";
-        // Build ignored set from array for fast lookup
-        const ignored = _cfg.ignoredRepos ?? [];
         const set = {};
-        for (const k of ignored) set[k] = true;
+        for (const k of (_cfg.ignoredRepos ?? [])) set[k] = true;
         _ignoredSet = set;
     }
 
-    function _isRepoIgnored(project: string, repoName: string): bool {
-        const key = `${project}/${repoName}`;
-        return !!(_ignoredSet[key] || _ignoredSet[repoName]);
+    function _isRepoIgnored(project: string, repo: string): bool {
+        return !!(_ignoredSet[`${project}/${repo}`] || _ignoredSet[repo]);
     }
 
-    function _setRepoIgnored(project: string, repoName: string, ignored: bool): void {
-        const key = `${project}/${repoName}`;
+    function _setRepoIgnored(project: string, repo: string, ignore: bool): void {
+        const key = `${project}/${repo}`;
         const copy = Object.assign({}, _ignoredSet);
-        // Remove both legacy bare-name and qualified forms
-        delete copy[repoName];
-        if (ignored) {
-            copy[key] = true;
-        } else {
-            delete copy[key];
-        }
+        delete copy[repo]; // remove legacy bare-name form
+        if (ignore) copy[key] = true; else delete copy[key];
         _ignoredSet = copy;
     }
 
     function _buildConfig(): string {
-        const cfg = {
+        return JSON.stringify({
             enabled: true,
             pat: _pat,
             organizationUrl: _orgUrl,
@@ -133,18 +127,16 @@ Item {
                 prComment: _notifyComment,
                 prMention: _notifyMention,
             },
-        };
-        return JSON.stringify(cfg, null, 2);
+        }, null, 2);
     }
 
     // -----------------------------------------------------------------------
-    // Apply
+    // Apply / write
     // -----------------------------------------------------------------------
     Process {
         id: writeProc
         onExited: sighupProc.running = true
     }
-
     Process {
         id: sighupProc
         command: ["bash", "-c",
@@ -163,23 +155,29 @@ Item {
     }
 
     // -----------------------------------------------------------------------
-    // UI
+    // Layout: scrollable area + fixed action bar at the bottom
     // -----------------------------------------------------------------------
-    ScrollView {
-        id: outerScroll
 
-        anchors.fill: parent
+    // Scrollable form content
+    ScrollView {
+        id: formScroll
+
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: actionBar.top
         anchors.margins: Tokens.padding.large
+        anchors.bottomMargin: Tokens.spacing.normal
         contentWidth: availableWidth
         clip: true
 
         ColumnLayout {
-            id: mainLayout
+            id: scrollContent
 
-            width: outerScroll.availableWidth
+            width: formScroll.availableWidth
             spacing: Tokens.spacing.normal
 
-            // Header
+            // ---- Header ----
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Tokens.spacing.small
@@ -193,16 +191,13 @@ Item {
                 }
 
                 Item {
-                    implicitWidth: closeBtn.implicitWidth + Tokens.padding.small * 2
-                    implicitHeight: closeBtn.implicitHeight + Tokens.padding.small * 2
+                    implicitWidth: 32; implicitHeight: 32
 
                     MaterialIcon {
-                        id: closeBtn
                         anchors.centerIn: parent
                         text: "close"
                         color: Colours.palette.m3secondary
                     }
-
                     StateLayer {
                         anchors.fill: parent
                         radius: Tokens.rounding.full
@@ -212,39 +207,81 @@ Item {
                 }
             }
 
-            // --- Credentials ---
+            // ---- Credentials ----
             StyledText { text: qsTr("Credentials"); font.weight: 500 }
 
-            LabeledField {
-                label: qsTr("Personal Access Token")
-                hint: qsTr("Required scopes: Code (Read), Graph (Read)")
-                isPassword: true
-                value: root._pat
-                onEdited: val => { root._pat = val }
+            // PAT with show/hide toggle
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+
+                StyledText {
+                    text: qsTr("Personal Access Token")
+                    font.pixelSize: Tokens.font.sizes.small
+                    color: Colours.palette.m3secondary
+                }
+
+                StyledRect {
+                    Layout.fillWidth: true
+                    implicitHeight: patField.implicitHeight + Tokens.padding.small * 2
+                    radius: Tokens.rounding.small
+                    color: Colours.layer(Colours.palette.m3surfaceContainer, 1)
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Tokens.padding.small
+                        anchors.rightMargin: 2
+                        spacing: 0
+
+                        StyledTextField {
+                            id: patField
+                            Layout.fillWidth: true
+                            text: root._pat
+                            echoMode: root._patVisible ? TextField.Normal : TextField.Password
+                            placeholderText: qsTr("Required scopes: Code (Read), Graph (Read)")
+                            onTextEdited: root._pat = text
+                        }
+
+                        Item {
+                            implicitWidth: 28; implicitHeight: 28
+
+                            MaterialIcon {
+                                anchors.centerIn: parent
+                                text: root._patVisible ? "visibility_off" : "visibility"
+                                color: Colours.palette.m3secondary
+                                font.pixelSize: Tokens.font.sizes.normal
+                            }
+                            StateLayer {
+                                anchors.fill: parent
+                                radius: Tokens.rounding.small
+                                color: Colours.palette.m3onSurface
+                                onClicked: root._patVisible = !root._patVisible
+                            }
+                        }
+                    }
+                }
             }
 
             LabeledField {
                 label: qsTr("Organization URL")
                 hint: qsTr("https://dev.azure.com/myorg")
                 value: root._orgUrl
-                onEdited: val => { root._orgUrl = val }
+                onEdited: val => root._orgUrl = val
             }
-
             LabeledField {
                 label: qsTr("Default project")
-                hint: qsTr("Used for PR URL building (e.g. Cambio)")
+                hint: qsTr("e.g. Cambio")
                 value: root._project
-                onEdited: val => { root._project = val }
+                onEdited: val => root._project = val
             }
-
             LabeledField {
                 label: qsTr("My identity (email / UPN)")
                 hint: qsTr("For mention and owned PR detection")
                 value: root._identity
-                onEdited: val => { root._identity = val }
+                onEdited: val => root._identity = val
             }
 
-            // --- Polling ---
+            // ---- Polling ----
             StyledText { text: qsTr("Polling"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
             LabeledField {
@@ -252,61 +289,31 @@ Item {
                 hint: qsTr("Minimum 10")
                 isNumber: true
                 value: root._pollInterval.toString()
-                onEdited: val => {
-                    const n = parseInt(val);
-                    if (!isNaN(n)) root._pollInterval = Math.max(10, n);
-                }
+                onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._pollInterval = Math.max(10, n); }
             }
 
-            // --- Notifications ---
+            // ---- Notifications ----
             StyledText { text: qsTr("Notifications"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
-            SwitchRow {
-                label: qsTr("New PR")
-                checked: root._notifyNewPr
-                onToggled: checked => root._notifyNewPr = checked
-            }
-
-            SwitchRow {
-                label: qsTr("Comment on my PR")
-                checked: root._notifyComment
-                onToggled: checked => root._notifyComment = checked
-            }
-
-            SwitchRow {
-                label: qsTr("Mention (@me)")
-                checked: root._notifyMention
-                onToggled: checked => root._notifyMention = checked
-            }
+            SwitchRow { label: qsTr("New PR"); checked: root._notifyNewPr; onToggled: c => root._notifyNewPr = c }
+            SwitchRow { label: qsTr("Comment on my PR"); checked: root._notifyComment; onToggled: c => root._notifyComment = c }
+            SwitchRow { label: qsTr("Mention (@me)"); checked: root._notifyMention; onToggled: c => root._notifyMention = c }
 
             LabeledField {
-                label: qsTr("Overdue threshold (min)")
+                label: qsTr("Overdue threshold (minutes)")
+                hint: qsTr("No approval or activity after this long triggers alert")
                 isNumber: true
                 value: root._overdueMinutes.toString()
-                onEdited: val => {
-                    const n = parseInt(val);
-                    if (!isNaN(n)) root._overdueMinutes = Math.max(1, n);
-                }
+                onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._overdueMinutes = Math.max(1, n); }
             }
 
-            // --- Colors ---
+            // ---- Colors ----
             StyledText { text: qsTr("Colors"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
-            LabeledField {
-                label: qsTr("Overdue color")
-                hint: "#ff9500"
-                value: root._overdueColor
-                onEdited: val => root._overdueColor = val
-            }
+            LabeledField { label: qsTr("Overdue color"); hint: "#ff9500"; value: root._overdueColor; onEdited: val => root._overdueColor = val }
+            LabeledField { label: qsTr("Mention color"); hint: "#e53935"; value: root._mentionColor; onEdited: val => root._mentionColor = val }
 
-            LabeledField {
-                label: qsTr("Mention color")
-                hint: "#e53935"
-                value: root._mentionColor
-                onEdited: val => root._mentionColor = val
-            }
-
-            // --- Repositories by project ---
+            // ---- Repositories ----
             StyledText {
                 text: qsTr("Repositories")
                 font.weight: 500
@@ -315,154 +322,184 @@ Item {
 
             StyledText {
                 visible: root._projectRepos.length === 0
-                text: qsTr("No repos loaded. Save credentials first, then wait for the first poll.")
+                text: qsTr("No repos loaded yet — save credentials first and wait for a poll.")
                 font.pixelSize: Tokens.font.sizes.small
                 color: Colours.palette.m3secondary
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
             }
 
+            // One ProjectSection per project
             Repeater {
-                id: projectRepeater
                 model: root._projectRepos
 
                 ProjectSection {
-                    id: projSection
-
                     required property var modelData
                     required property int index
 
                     Layout.fillWidth: true
                     projectName: modelData.project
-                    repos: modelData.repos
+                    repos: modelData.repos ?? []
                     ignoredSet: root._ignoredSet
 
-                    onRepoToggled: (proj, repo, ignored) => root._setRepoIgnored(proj, repo, ignored)
-                }
-            }
-
-            // --- Action buttons ---
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.topMargin: Tokens.spacing.normal
-                spacing: Tokens.spacing.small
-
-                IconTextButton {
-                    Layout.fillWidth: true
-                    text: qsTr("Cancel")
-                    icon: "close"
-                    inactiveColour: Colours.palette.m3surfaceVariant
-                    inactiveOnColour: Colours.palette.m3onSurfaceVariant
-                    verticalPadding: Tokens.padding.small
-                    onClicked: root.close()
-                }
-
-                IconTextButton {
-                    Layout.fillWidth: true
-                    text: qsTr("Apply")
-                    icon: "check"
-                    inactiveColour: Colours.palette.m3primaryContainer
-                    inactiveOnColour: Colours.palette.m3onPrimaryContainer
-                    verticalPadding: Tokens.padding.small
-                    onClicked: root._apply()
+                    onRepoToggled: (proj, repo, ignore) => root._setRepoIgnored(proj, repo, ignore)
                 }
             }
         }
     }
 
+    // Fixed action bar — always visible at the bottom, outside the scroll
+    RowLayout {
+        id: actionBar
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: Tokens.padding.large
+        anchors.rightMargin: Tokens.padding.large
+        anchors.bottomMargin: Tokens.padding.large
+        spacing: Tokens.spacing.small
+
+        IconTextButton {
+            Layout.fillWidth: true
+            text: qsTr("Cancel")
+            icon: "close"
+            inactiveColour: Colours.palette.m3surfaceVariant
+            inactiveOnColour: Colours.palette.m3onSurfaceVariant
+            verticalPadding: Tokens.padding.small
+            onClicked: root.close()
+        }
+
+        IconTextButton {
+            Layout.fillWidth: true
+            text: qsTr("Apply")
+            icon: "check"
+            inactiveColour: Colours.palette.m3primaryContainer
+            inactiveOnColour: Colours.palette.m3onPrimaryContainer
+            verticalPadding: Tokens.padding.small
+            onClicked: root._apply()
+        }
+    }
+
     // -----------------------------------------------------------------------
-    // Project collapsible section with per-repo checkboxes
+    // ProjectSection component
+    // Checkbox area is a separate Item (z:2) to the left of the expansion
+    // trigger, so clicks are never blocked by the StateLayer.
+    // projectName/_repos are cached on creation so toggling repos doesn't
+    // cause the text to briefly disappear during re-evaluation.
     // -----------------------------------------------------------------------
     component ProjectSection: ColumnLayout {
         id: ps
 
         required property string projectName
-        required property var repos       // [{id, name}]
-        required property var ignoredSet  // plain object used as a set
+        required property var    repos
+        required property var    ignoredSet
 
-        signal repoToggled(string proj, string repo, bool ignored)
+        signal repoToggled(string proj, string repo, bool ignore)
 
         property bool expanded: false
 
-        spacing: 0
+        // Cached so binding re-evaluations don't cause visual glitches
+        property string _name: ""
+        property var    _repos: []
+        Component.onCompleted: { _name = projectName; _repos = repos; }
 
-        // Computed: how many repos are enabled
         readonly property int enabledCount: {
             let n = 0;
-            for (const r of repos) {
-                const key = `${projectName}/${r.name}`;
-                if (!ignoredSet[key] && !ignoredSet[r.name]) n++;
+            for (const r of _repos) {
+                if (!ignoredSet[`${_name}/${r.name}`] && !ignoredSet[r.name]) n++;
             }
             return n;
         }
-        // tristate: 0=none, 1=partial, 2=all
+        // 0=none 1=partial 2=all
         readonly property int checkState: {
+            if (_repos.length === 0) return 0;
             if (enabledCount === 0) return 0;
-            if (enabledCount === repos.length) return 2;
+            if (enabledCount === _repos.length) return 2;
             return 1;
         }
 
-        // Header row
+        spacing: 0
+        clip: false
+
+        // ---- Header ----
         Item {
             Layout.fillWidth: true
             implicitHeight: 44
 
-            // Background on hover
             StyledRect {
                 anchors.fill: parent
                 radius: Tokens.rounding.small
                 color: Colours.tPalette.m3surfaceVariant
-                opacity: 0.6
+                opacity: 0.5
             }
 
-            RowLayout {
+            // Checkbox — separate, higher z so StateLayer doesn't capture its clicks
+            Item {
+                id: checkboxHitArea
                 anchors.left: parent.left
-                anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: Tokens.padding.small
-                anchors.rightMargin: Tokens.padding.small
-                spacing: Tokens.spacing.small
+                width: 40
+                height: parent.height
+                z: 2
 
-                // Tristate checkbox icon
                 MaterialIcon {
+                    anchors.centerIn: parent
+                    fill: ps.checkState > 0 ? 1 : 0
                     text: ps.checkState === 2 ? "check_box"
                         : ps.checkState === 1 ? "indeterminate_check_box"
                         : "check_box_outline_blank"
-                    fill: ps.checkState > 0 ? 1 : 0
                     color: ps.checkState === 2 ? Colours.palette.m3primary
                          : ps.checkState === 1 ? Colours.palette.m3secondary
                          : Colours.palette.m3outline
+                    font.pixelSize: Tokens.font.sizes.large
+                }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            // toggle all: if any are enabled, disable all; if none, enable all
-                            const disableAll = ps.enabledCount > 0;
-                            for (const r of ps.repos)
-                                ps.repoToggled(ps.projectName, r.name, disableAll);
-                        }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        const disableAll = ps.enabledCount > 0;
+                        for (const r of ps._repos)
+                            ps.repoToggled(ps._name, r.name, disableAll);
                     }
                 }
+            }
 
-                StyledText {
-                    Layout.fillWidth: true
-                    text: ps.projectName
-                    font.weight: 500
-                    elide: Text.ElideRight
-                }
+            // Expansion trigger — project name + count + chevron
+            Item {
+                anchors.left: checkboxHitArea.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
 
-                StyledText {
-                    text: `${ps.enabledCount}/${ps.repos.length}`
-                    font.pixelSize: Tokens.font.sizes.small
-                    color: Colours.palette.m3secondary
-                }
+                RowLayout {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.rightMargin: Tokens.padding.small
+                    spacing: Tokens.spacing.small
 
-                MaterialIcon {
-                    text: "expand_more"
-                    color: Colours.palette.m3secondary
-                    rotation: ps.expanded ? 180 : 0
+                    StyledText {
+                        Layout.fillWidth: true
+                        // Bind to cached _name so assignment to ignoredSet
+                        // doesn't briefly blank the text during re-evaluation
+                        text: ps._name
+                        font.weight: 500
+                        elide: Text.ElideRight
+                    }
 
-                    Behavior on rotation { Anim { type: Anim.StandardSmall } }
+                    StyledText {
+                        text: `${ps.enabledCount}/${ps._repos.length}`
+                        font.pixelSize: Tokens.font.sizes.small
+                        color: Colours.palette.m3secondary
+                    }
+
+                    MaterialIcon {
+                        text: "expand_more"
+                        color: Colours.palette.m3secondary
+                        rotation: ps.expanded ? 180 : 0
+                        Behavior on rotation { Anim { type: Anim.StandardSmall } }
+                    }
                 }
 
                 StateLayer {
@@ -474,41 +511,41 @@ Item {
             }
         }
 
-        // Expandable repo list (scrollable when tall)
+        // ---- Expandable repo list ----
         Item {
             id: repoWrapper
 
             Layout.fillWidth: true
-            implicitHeight: ps.expanded ? Math.min(repoCol.implicitHeight, 200) : 0
+            implicitHeight: ps.expanded ? Math.min(repoScrollView.contentHeight + 4, 200) : 0
             clip: true
 
             Behavior on implicitHeight { Anim {} }
 
             ScrollView {
+                id: repoScrollView
                 anchors.fill: parent
                 contentWidth: availableWidth
                 clip: true
 
                 ColumnLayout {
                     id: repoCol
-
-                    width: repoWrapper.width
-                    spacing: 2
+                    width: repoScrollView.availableWidth
+                    spacing: 0
 
                     Repeater {
-                        model: ps.repos
+                        model: ps._repos
 
                         Item {
                             id: repoRow
 
                             required property var modelData
 
-                            Layout.fillWidth: true
-                            width: parent.width
+                            width: repoCol.width
                             implicitHeight: 36
 
-                            readonly property bool enabled_: {
-                                const key = `${ps.projectName}/${modelData.name}`;
+                            readonly property bool _enabled: {
+                                // Re-evaluates when ps.ignoredSet changes
+                                const key = `${ps._name}/${modelData.name}`;
                                 return !(ps.ignoredSet[key] || ps.ignoredSet[modelData.name]);
                             }
 
@@ -516,14 +553,14 @@ Item {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
-                                anchors.leftMargin: Tokens.padding.normal * 2
+                                anchors.leftMargin: Tokens.padding.normal * 2 + 4
                                 anchors.rightMargin: Tokens.padding.small
                                 spacing: Tokens.spacing.small
 
                                 MaterialIcon {
-                                    text: repoRow.enabled_ ? "check_box" : "check_box_outline_blank"
-                                    fill: repoRow.enabled_ ? 1 : 0
-                                    color: repoRow.enabled_ ? Colours.palette.m3primary : Colours.palette.m3outline
+                                    fill: repoRow._enabled ? 1 : 0
+                                    text: repoRow._enabled ? "check_box" : "check_box_outline_blank"
+                                    color: repoRow._enabled ? Colours.palette.m3primary : Colours.palette.m3outline
                                     font.pixelSize: Tokens.font.sizes.normal
                                 }
 
@@ -539,7 +576,7 @@ Item {
                                 anchors.fill: parent
                                 radius: Tokens.rounding.small
                                 color: Colours.palette.m3onSurface
-                                onClicked: ps.repoToggled(ps.projectName, repoRow.modelData.name, repoRow.enabled_)
+                                onClicked: ps.repoToggled(ps._name, repoRow.modelData.name, repoRow._enabled)
                             }
                         }
                     }
@@ -549,7 +586,7 @@ Item {
     }
 
     // -----------------------------------------------------------------------
-    // Labeled text field inline component
+    // Labeled text field helper
     // -----------------------------------------------------------------------
     component LabeledField: ColumnLayout {
         id: lf
@@ -557,7 +594,6 @@ Item {
         property string label: ""
         property string hint: ""
         property string value: ""
-        property bool isPassword: false
         property bool isNumber: false
 
         signal edited(string val)
@@ -573,24 +609,20 @@ Item {
 
         StyledRect {
             Layout.fillWidth: true
-            implicitHeight: fieldInput.implicitHeight + Tokens.padding.small * 2
+            implicitHeight: fieldTf.implicitHeight + Tokens.padding.small * 2
             radius: Tokens.rounding.small
             color: Colours.layer(Colours.palette.m3surfaceContainer, 1)
 
             StyledTextField {
-                id: fieldInput
-
+                id: fieldTf
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: Tokens.padding.small
                 anchors.rightMargin: Tokens.padding.small
-
                 text: lf.value
-                echoMode: lf.isPassword ? TextField.Password : TextField.Normal
                 inputMethodHints: lf.isNumber ? Qt.ImhDigitsOnly : Qt.ImhNone
                 placeholderText: lf.hint
-
                 onTextEdited: lf.edited(text)
             }
         }
