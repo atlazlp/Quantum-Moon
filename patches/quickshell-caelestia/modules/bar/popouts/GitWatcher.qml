@@ -37,7 +37,7 @@ Item {
 
             StyledText {
                 Layout.fillWidth: true
-                text: qsTr("Azure DevOps")
+                text: GitWatcher.t.widgetTitle
                 font.weight: 600
             }
 
@@ -86,8 +86,8 @@ Item {
 
             Repeater {
                 model: [
-                    { key: 0, label: qsTr("Feed"),     count: GitWatcher.mainFeedItems.length },
-                    { key: 1, label: qsTr("Archived"), count: GitWatcher.archiveFeedItems.length },
+                    { key: 0, label: GitWatcher.t.tabFeed,     count: GitWatcher.mainFeedItems.length },
+                    { key: 1, label: GitWatcher.t.tabArchived, count: GitWatcher.archiveFeedItems.length },
                 ]
 
                 Item {
@@ -159,7 +159,7 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             visible: tabBar.currentTab === 0
             listModel: GitWatcher.mainFeedItems
-            emptyText: qsTr("Nothing to review")
+            emptyText: GitWatcher.t.nothingToReview
             listDelegate: feedDelegate
         }
 
@@ -167,7 +167,7 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             visible: tabBar.currentTab === 1
             listModel: GitWatcher.archiveFeedItems
-            emptyText: qsTr("No archived items")
+            emptyText: GitWatcher.t.noArchived
             listDelegate: archiveDelegate
         }
 
@@ -181,7 +181,7 @@ Item {
                 inactiveColour: Colours.palette.m3secondaryContainer
                 inactiveOnColour: Colours.palette.m3onSecondaryContainer
                 verticalPadding: Tokens.padding.small
-                text: qsTr("Refresh"); icon: "sync"
+                text: GitWatcher.t.refresh; icon: "sync"
                 onClicked: GitWatcher.refresh()
             }
 
@@ -190,7 +190,7 @@ Item {
                 inactiveColour: Colours.palette.m3primaryContainer
                 inactiveOnColour: Colours.palette.m3onPrimaryContainer
                 verticalPadding: Tokens.padding.small
-                text: qsTr("Config"); icon: "settings"
+                text: GitWatcher.t.config; icon: "settings"
                 onClicked: root.popouts.detachRequested("gitwatcher")
             }
         }
@@ -198,7 +198,7 @@ Item {
         StyledText {
             visible: GitWatcher.lastUpdated.length > 0
             Layout.fillWidth: true
-            text: qsTr("Updated %1").arg(_fmtTime(GitWatcher.lastUpdated))
+            text: GitWatcher.t.updatedAt.replace("%1", _fmtTime(GitWatcher.lastUpdated))
             font.pixelSize: Tokens.font.sizes.small - 1
             color: Colours.palette.m3secondary; opacity: 0.6
             horizontalAlignment: Text.AlignHCenter
@@ -233,7 +233,6 @@ Item {
     }
 
     // ── Main feed delegate ────────────────────────────────────────────────────
-    // Covers itemType: "pr", "comment", "mention"
     Component {
         id: feedDelegate
 
@@ -243,16 +242,13 @@ Item {
             required property var modelData
 
             width: ListView.view?.width ?? 0
-
-            // Action strip height (slides in on hover)
             property bool showActions: hov.hovered
 
             implicitHeight: cardInner.implicitHeight + actionArea.implicitHeight +
-                            Tokens.padding.normal * 2  // generous vertical padding
+                            Tokens.padding.normal * 2
 
             HoverHandler { id: hov }
 
-            // Card background
             StyledRect {
                 anchors.fill: parent
                 radius: Tokens.rounding.normal
@@ -275,13 +271,12 @@ Item {
                 anchors.margins: Tokens.padding.normal
                 spacing: Tokens.spacing.smaller
 
-                // ── PR card content ──
+                // ── PR card ──
                 RowLayout {
                     visible: card.modelData.itemType === "pr"
                     Layout.fillWidth: true
                     spacing: Tokens.spacing.smaller
 
-                    // Type chip
                     StyledRect {
                         implicitWidth: chipLabel.implicitWidth + 8
                         implicitHeight: chipLabel.implicitHeight + 3
@@ -295,10 +290,10 @@ Item {
                         StyledText {
                             id: chipLabel
                             anchors.centerIn: parent
-                            text: card.modelData.isOverdue ? qsTr("stalled") :
-                                  card.modelData.hasMentions ? qsTr("mention") :
-                                  card.modelData.hasUnreadComments ? qsTr("comment") :
-                                  card.modelData.isOwned ? qsTr("mine") : qsTr("PR")
+                            text: card.modelData.isOverdue ? GitWatcher.t.chipStalled :
+                                  card.modelData.hasMentions ? GitWatcher.t.chipMention :
+                                  card.modelData.hasUnreadComments ? GitWatcher.t.chipComment :
+                                  card.modelData.isOwned ? GitWatcher.t.chipMine : GitWatcher.t.chipPR
                             font.pixelSize: Tokens.font.sizes.small - 1
                             color: (card.modelData.isOverdue || card.modelData.hasMentions)
                                 ? "white" : Colours.palette.m3secondary
@@ -314,7 +309,7 @@ Item {
 
                     StyledText {
                         text: card.modelData.isOverdue
-                            ? qsTr("⚠ %1").arg(_fmtAge(card.modelData.stallMinutes ?? card.modelData.ageMinutes))
+                            ? GitWatcher.t.stalledPrefix + _fmtAge(card.modelData.stallMinutes ?? card.modelData.ageMinutes)
                             : _fmtAge(card.modelData.ageMinutes)
                         font.pixelSize: Tokens.font.sizes.small
                         color: card.modelData.isOverdue
@@ -345,7 +340,7 @@ Item {
                     }
                 }
 
-                // ── Comment / Mention card content ──
+                // ── Comment / Mention card ──
                 RowLayout {
                     visible: card.modelData.itemType === "comment" || card.modelData.itemType === "mention"
                     Layout.fillWidth: true
@@ -398,7 +393,7 @@ Item {
                 }
             }
 
-            // ── Action strip (slides in on hover) ────────────────────────────
+            // ── Action strip ──────────────────────────────────────────────────
             Item {
                 id: actionArea
                 anchors.left: parent.left
@@ -422,7 +417,6 @@ Item {
                     anchors.rightMargin: Tokens.padding.normal
                     spacing: Tokens.spacing.small
 
-                    // Open in browser
                     Item {
                         implicitWidth: openIcon.implicitWidth + Tokens.padding.small * 2
                         implicitHeight: openIcon.implicitHeight + Tokens.padding.small
@@ -432,7 +426,6 @@ Item {
 
                     Item { Layout.fillWidth: true }
 
-                    // Mute / Unmute
                     Item {
                         implicitWidth: muteRow.implicitWidth + Tokens.padding.small * 2
                         implicitHeight: muteRow.implicitHeight + Tokens.padding.small
@@ -442,7 +435,7 @@ Item {
                             anchors.centerIn: parent
                             spacing: 4
                             MaterialIcon { text: card.modelData.isMuted ? "notifications_off" : "notifications"; color: Colours.palette.m3secondary; font.pixelSize: Tokens.font.sizes.normal }
-                            StyledText { text: card.modelData.isMuted ? qsTr("Unmute") : qsTr("Mute"); font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
+                            StyledText { text: card.modelData.isMuted ? GitWatcher.t.unmute : GitWatcher.t.mute; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
                         }
 
                         StateLayer {
@@ -454,7 +447,6 @@ Item {
                         }
                     }
 
-                    // Dismiss
                     Item {
                         implicitWidth: dismissRow.implicitWidth + Tokens.padding.small * 2
                         implicitHeight: dismissRow.implicitHeight + Tokens.padding.small
@@ -464,7 +456,7 @@ Item {
                             anchors.centerIn: parent
                             spacing: 4
                             MaterialIcon { text: "archive"; color: Colours.palette.m3error; font.pixelSize: Tokens.font.sizes.normal }
-                            StyledText { text: qsTr("Dismiss"); font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3error }
+                            StyledText { text: GitWatcher.t.dismiss; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3error }
                         }
 
                         StateLayer {
@@ -475,8 +467,6 @@ Item {
                 }
             }
 
-            // Tap/click whole card to open URL.
-            // Disabled when actions are visible so the action buttons can receive clicks.
             StateLayer {
                 anchors.fill: parent; radius: Tokens.rounding.normal; color: Colours.palette.m3onSurface
                 enabled: !card.showActions
@@ -486,7 +476,6 @@ Item {
     }
 
     // ── Archive delegate ──────────────────────────────────────────────────────
-    // Simpler card, no hover actions
     Component {
         id: archiveDelegate
 
@@ -514,7 +503,6 @@ Item {
                 anchors.rightMargin: Tokens.padding.normal
                 spacing: Tokens.spacing.small
 
-                // Status chip
                 StyledRect {
                     implicitWidth: archChip.implicitWidth + 8
                     implicitHeight: archChip.implicitHeight + 3
@@ -525,7 +513,9 @@ Item {
 
                     StyledText {
                         id: archChip; anchors.centerIn: parent
-                        text: archCard.modelData.itemType === "pr_archived" ? qsTr("dismissed") : qsTr("merged")
+                        text: archCard.modelData.itemType === "pr_archived"
+                            ? GitWatcher.t.labelDismissed
+                            : GitWatcher.t.labelMerged
                         font.pixelSize: Tokens.font.sizes.small - 1
                         color: Colours.palette.m3secondary
                     }
@@ -549,7 +539,6 @@ Item {
                     }
                 }
 
-                // Undismiss button (only for archived/dismissed)
                 Item {
                     visible: archCard.modelData.itemType === "pr_archived"
                     implicitWidth: undismissIcon.implicitWidth + Tokens.padding.small * 2
@@ -577,11 +566,11 @@ Item {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     function _fmtAge(minutes: int): string {
-        if (!minutes || minutes < 1) return qsTr("now");
-        if (minutes < 60) return qsTr("%1m").arg(minutes);
+        if (!minutes || minutes < 1) return "now";
+        if (minutes < 60) return `${minutes}m`;
         const h = Math.floor(minutes / 60);
         const m = minutes % 60;
-        return m > 0 ? qsTr("%1h%2m").arg(h).arg(m) : qsTr("%1h").arg(h);
+        return m > 0 ? `${h}h${m}m` : `${h}h`;
     }
 
     function _fmtTime(iso: string): string {

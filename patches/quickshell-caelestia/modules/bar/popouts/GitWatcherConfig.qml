@@ -75,8 +75,12 @@ Item {
     property bool   _notifyMention: true
     property string _overdueColor: "#ff9500"
     property string _mentionColor: "#e53935"
+    property string _language: "en"       // "en" or "pt"
     // "Project/repoName" → true   (allowlist of repos to watch)
     property var    _watchedSet: ({})
+
+    // Shorthand — config modal uses the same translation map as the popout
+    readonly property var t: GitWatcher.t
 
     function _syncFormFromCfg(): void {
         _pat          = _cfg.pat ?? "";
@@ -89,6 +93,7 @@ Item {
         _notifyMention  = _cfg.notifications?.prMention ?? true;
         _overdueColor   = _cfg.colors?.overdue ?? "#ff9500";
         _mentionColor   = _cfg.colors?.mention ?? "#e53935";
+        _language       = _cfg.language ?? "en";
 
         // Build watched set from new watchedRepos field.
         // If config still has old ignoredRepos, migrate: treat everything NOT in
@@ -122,6 +127,7 @@ Item {
             pat: _pat,
             organizationUrl: _orgUrl,
             myIdentity: _identity,
+            language: _language,
             pollIntervalSeconds: _pollInterval,
             watchedRepos: Object.keys(_watchedSet),
             colors: { overdue: _overdueColor, mention: _mentionColor },
@@ -173,7 +179,7 @@ Item {
 
                 StyledText {
                     Layout.fillWidth: true
-                    text: qsTr("GitWatcher Config")
+                    text: t.configTitle
                     font.weight: 600
                 }
 
@@ -184,15 +190,61 @@ Item {
                 }
             }
 
+            // ── Language ──
+            StyledText { text: t.sectionLanguage; font.weight: 500 }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Tokens.spacing.small
+
+                Repeater {
+                    model: [
+                        { lang: "en", label: t.langEnglish },
+                        { lang: "pt", label: t.langPortuguese },
+                    ]
+
+                    Item {
+                        id: langBtn
+                        required property var modelData
+                        required property int index
+
+                        Layout.fillWidth: true
+                        implicitHeight: langLabel.implicitHeight + Tokens.padding.normal
+
+                        readonly property bool chosen: root._language.startsWith(modelData.lang)
+
+                        StyledRect {
+                            anchors.fill: parent; radius: Tokens.rounding.small
+                            color: langBtn.chosen ? Colours.palette.m3primary : Colours.tPalette.m3surfaceVariant
+                            opacity: langBtn.chosen ? 1 : 0.6
+                        }
+
+                        StyledText {
+                            id: langLabel
+                            anchors.centerIn: parent
+                            text: langBtn.modelData.label
+                            font.pixelSize: Tokens.font.sizes.small
+                            font.weight: langBtn.chosen ? 600 : 400
+                            color: langBtn.chosen ? Colours.palette.m3onPrimary : Colours.palette.m3onSurface
+                        }
+
+                        StateLayer {
+                            anchors.fill: parent; radius: Tokens.rounding.small; color: Colours.palette.m3onSurface
+                            onClicked: root._language = langBtn.modelData.lang
+                        }
+                    }
+                }
+            }
+
             // ── Credentials ──
-            StyledText { text: qsTr("Credentials"); font.weight: 500 }
+            StyledText { text: t.sectionCredentials; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
             // PAT with visibility toggle
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
 
-                StyledText { text: qsTr("Personal Access Token"); font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
+                StyledText { text: t.fieldPat; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
 
                 StyledRect {
                     Layout.fillWidth: true
@@ -211,7 +263,7 @@ Item {
                             Layout.fillWidth: true
                             text: root._pat
                             echoMode: root._patVisible ? TextField.Normal : TextField.Password
-                            placeholderText: qsTr("Required scopes: Code (Read), Graph (Read)")
+                            placeholderText: t.fieldPatHint
                             onTextEdited: root._pat = text
                         }
 
@@ -224,31 +276,31 @@ Item {
                 }
             }
 
-            LabeledField { label: qsTr("Organization URL"); hint: "https://dev.azure.com/myorg"; value: root._orgUrl; onEdited: val => root._orgUrl = val }
-            LabeledField { label: qsTr("My identity (email / UPN)"); hint: qsTr("For mention and owned PR detection"); value: root._identity; onEdited: val => root._identity = val }
+            LabeledField { label: t.fieldOrgUrl; hint: t.fieldOrgUrlHint; value: root._orgUrl; onEdited: val => root._orgUrl = val }
+            LabeledField { label: t.fieldIdentity; hint: t.fieldIdentityHint; value: root._identity; onEdited: val => root._identity = val }
 
             // ── Polling ──
-            StyledText { text: qsTr("Polling"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
-            LabeledField { label: qsTr("Poll interval (seconds)"); hint: qsTr("Minimum 10"); isNumber: true; value: root._pollInterval.toString(); onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._pollInterval = Math.max(10, n); } }
+            StyledText { text: t.sectionPolling; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+            LabeledField { label: t.fieldInterval; hint: t.fieldIntervalHint; isNumber: true; value: root._pollInterval.toString(); onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._pollInterval = Math.max(10, n); } }
 
             // ── Notifications ──
-            StyledText { text: qsTr("Notifications"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
-            SwitchRow { label: qsTr("New PR"); checked: root._notifyNewPr; onToggled: c => root._notifyNewPr = c }
-            SwitchRow { label: qsTr("Comment on my PR"); checked: root._notifyComment; onToggled: c => root._notifyComment = c }
-            SwitchRow { label: qsTr("Mention (@me)"); checked: root._notifyMention; onToggled: c => root._notifyMention = c }
-            LabeledField { label: qsTr("Overdue threshold (min)"); hint: qsTr("Stalled + unapproved after this long"); isNumber: true; value: root._overdueMinutes.toString(); onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._overdueMinutes = Math.max(1, n); } }
+            StyledText { text: t.sectionNotifs; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+            SwitchRow { label: t.notifNewPr;   checked: root._notifyNewPr;    onToggled: c => root._notifyNewPr = c }
+            SwitchRow { label: t.notifComment; checked: root._notifyComment;  onToggled: c => root._notifyComment = c }
+            SwitchRow { label: t.notifMention; checked: root._notifyMention;  onToggled: c => root._notifyMention = c }
+            LabeledField { label: t.fieldOverdueMin; hint: t.fieldOverdueHint; isNumber: true; value: root._overdueMinutes.toString(); onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._overdueMinutes = Math.max(1, n); } }
 
             // ── Colors ──
-            StyledText { text: qsTr("Colors"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
-            LabeledField { label: qsTr("Overdue color"); hint: "#ff9500"; value: root._overdueColor; onEdited: val => root._overdueColor = val }
-            LabeledField { label: qsTr("Mention color"); hint: "#e53935"; value: root._mentionColor; onEdited: val => root._mentionColor = val }
+            StyledText { text: t.sectionColors; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+            LabeledField { label: t.fieldOverdueColor; hint: "#ff9500"; value: root._overdueColor; onEdited: val => root._overdueColor = val }
+            LabeledField { label: t.fieldMentionColor; hint: "#e53935"; value: root._mentionColor; onEdited: val => root._mentionColor = val }
 
             // ── Repositories ──
-            StyledText { text: qsTr("Repositories"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+            StyledText { text: t.sectionRepos; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
             StyledText {
                 visible: root._projectRepos.length === 0
-                text: qsTr("No repos loaded yet — save credentials first and wait for a poll.")
+                text: t.reposEmptyHint
                 font.pixelSize: Tokens.font.sizes.small
                 color: Colours.palette.m3secondary
                 wrapMode: Text.WordWrap
@@ -287,7 +339,7 @@ Item {
 
         IconTextButton {
             Layout.fillWidth: true
-            text: qsTr("Cancel")
+            text: t.cancel
             icon: "close"
             inactiveColour: Colours.palette.m3surfaceVariant
             inactiveOnColour: Colours.palette.m3onSurfaceVariant
@@ -297,7 +349,7 @@ Item {
 
         IconTextButton {
             Layout.fillWidth: true
-            text: qsTr("Apply")
+            text: t.apply
             icon: "check"
             inactiveColour: Colours.palette.m3primaryContainer
             inactiveOnColour: Colours.palette.m3onPrimaryContainer

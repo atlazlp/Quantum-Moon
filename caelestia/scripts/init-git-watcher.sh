@@ -46,6 +46,7 @@ cat > "$CONFIG_FILE" <<JSON
     "overdue": "#ff9500",
     "mention": "#e53935"
   },
+  "language": "en",
   "notifications": {
     "newPr": true,
     "overdueMinutes": 60,
