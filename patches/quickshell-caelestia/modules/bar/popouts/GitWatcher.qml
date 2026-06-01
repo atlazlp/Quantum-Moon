@@ -12,10 +12,8 @@ Item {
 
     required property PopoutState popouts
 
-    // Fixed size — ListView scrolls within the content area.
-    // 320 × 580 gives room for ~12 PR rows before scrolling.
-    implicitWidth: 320
-    implicitHeight: 580
+    implicitWidth: 400
+    implicitHeight: 620
 
     ColumnLayout {
         anchors.fill: parent
@@ -28,11 +26,11 @@ Item {
             spacing: Tokens.spacing.small
 
             MaterialIcon {
-                text: GitWatcher.overdueCount > 0 ? "data_alert"
-                    : GitWatcher.prs.length > 0 ? "data_info_alert"
+                text: GitWatcher.filteredOverdueCount > 0 ? "data_alert"
+                    : GitWatcher.mainFeedItems.length > 0 ? "data_info_alert"
                     : "check"
                 fill: 1
-                color: GitWatcher.overdueCount > 0
+                color: GitWatcher.filteredOverdueCount > 0
                     ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")
                     : Colours.palette.m3secondary
             }
@@ -45,9 +43,7 @@ Item {
 
             MaterialIcon {
                 visible: GitWatcher.loading
-                text: "sync"
-                color: Colours.palette.m3secondary
-                opacity: 0.7
+                text: "sync"; color: Colours.palette.m3secondary; opacity: 0.7
                 RotationAnimation on rotation {
                     running: GitWatcher.loading
                     from: 0; to: 360; duration: 1000; loops: Animation.Infinite
@@ -55,20 +51,20 @@ Item {
             }
 
             StyledRect {
-                visible: GitWatcher.prs.length > 0
-                implicitWidth: badgeLabel.implicitWidth + Tokens.padding.small * 2
-                implicitHeight: badgeLabel.implicitHeight + 2
+                visible: GitWatcher.attentionCount > 0
+                implicitWidth: attnLbl.implicitWidth + Tokens.padding.small * 2
+                implicitHeight: attnLbl.implicitHeight + 2
                 radius: Tokens.rounding.full
-                color: GitWatcher.overdueCount > 0
+                color: GitWatcher.filteredOverdueCount > 0
                     ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")
                     : Colours.palette.m3primaryContainer
 
                 StyledText {
-                    id: badgeLabel
+                    id: attnLbl
                     anchors.centerIn: parent
-                    text: GitWatcher.prs.length.toString()
+                    text: GitWatcher.attentionCount.toString()
                     font.pixelSize: Tokens.font.sizes.small
-                    color: GitWatcher.overdueCount > 0 ? "white" : Colours.palette.m3onPrimaryContainer
+                    color: GitWatcher.filteredOverdueCount > 0 ? "white" : Colours.palette.m3onPrimaryContainer
                 }
             }
         }
@@ -84,20 +80,14 @@ Item {
         }
 
         // ── Tabs ─────────────────────────────────────────────────────────────
-        // Fixed-height row; each tab cell is the same size.
-        // Content is centered using Row { anchors.centerIn } so presence or
-        // absence of the count badge doesn't affect alignment.
         RowLayout {
             Layout.fillWidth: true
             spacing: Tokens.spacing.smaller
 
             Repeater {
-                id: tabRepeater
-
                 model: [
-                    { key: 0, label: qsTr("PRs"),      count: GitWatcher.prs.length },
-                    { key: 1, label: qsTr("Comments"), count: GitWatcher.commentItems.length },
-                    { key: 2, label: qsTr("Mentions"), count: GitWatcher.mentionItems.length },
+                    { key: 0, label: qsTr("Feed"),     count: GitWatcher.mainFeedItems.length },
+                    { key: 1, label: qsTr("Archived"), count: GitWatcher.archiveFeedItems.length },
                 ]
 
                 Item {
@@ -120,7 +110,6 @@ Item {
                         opacity: tabItem.isActive ? 1 : 0.6
                     }
 
-                    // Centered content regardless of badge visibility
                     Row {
                         anchors.centerIn: parent
                         spacing: 4
@@ -165,35 +154,21 @@ Item {
 
         QtObject { id: tabBar; property int currentTab: 0 }
 
-        // ── Content — fills all remaining height ─────────────────────────────
+        // ── Content ──────────────────────────────────────────────────────────
         FeedList {
-            id: prListItem
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.fillWidth: true; Layout.fillHeight: true
             visible: tabBar.currentTab === 0
-            listModel: GitWatcher.prs
-            emptyText: qsTr("No active PRs")
-            listDelegate: prDelegate
+            listModel: GitWatcher.mainFeedItems
+            emptyText: qsTr("Nothing to review")
+            listDelegate: feedDelegate
         }
 
         FeedList {
-            id: commentListItem
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.fillWidth: true; Layout.fillHeight: true
             visible: tabBar.currentTab === 1
-            listModel: GitWatcher.commentItems
-            emptyText: qsTr("No new comments")
-            listDelegate: feedItemDelegate
-        }
-
-        FeedList {
-            id: mentionListItem
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            visible: tabBar.currentTab === 2
-            listModel: GitWatcher.mentionItems
-            emptyText: qsTr("No mentions")
-            listDelegate: feedItemDelegate
+            listModel: GitWatcher.archiveFeedItems
+            emptyText: qsTr("No archived items")
+            listDelegate: archiveDelegate
         }
 
         // ── Footer ───────────────────────────────────────────────────────────
@@ -206,8 +181,7 @@ Item {
                 inactiveColour: Colours.palette.m3secondaryContainer
                 inactiveOnColour: Colours.palette.m3onSecondaryContainer
                 verticalPadding: Tokens.padding.small
-                text: qsTr("Refresh")
-                icon: "sync"
+                text: qsTr("Refresh"); icon: "sync"
                 onClicked: GitWatcher.refresh()
             }
 
@@ -216,8 +190,7 @@ Item {
                 inactiveColour: Colours.palette.m3primaryContainer
                 inactiveOnColour: Colours.palette.m3onPrimaryContainer
                 verticalPadding: Tokens.padding.small
-                text: qsTr("Config")
-                icon: "settings"
+                text: qsTr("Config"); icon: "settings"
                 onClicked: root.popouts.detachRequested("gitwatcher")
             }
         }
@@ -225,25 +198,19 @@ Item {
         StyledText {
             visible: GitWatcher.lastUpdated.length > 0
             Layout.fillWidth: true
-            text: qsTr("Updated %1").arg(_formatTimestamp(GitWatcher.lastUpdated))
+            text: qsTr("Updated %1").arg(_fmtTime(GitWatcher.lastUpdated))
             font.pixelSize: Tokens.font.sizes.small - 1
-            color: Colours.palette.m3secondary
-            opacity: 0.6
+            color: Colours.palette.m3secondary; opacity: 0.6
             horizontalAlignment: Text.AlignHCenter
         }
     }
 
-    // ── FeedList component ────────────────────────────────────────────────────
-    // Uses an Item wrapper (NOT a ListView subclass) so that listModel and
-    // listDelegate are plain properties that are explicitly forwarded to the
-    // internal ListView — no property shadowing, no implicit height collapse.
+    // ── FeedList ─────────────────────────────────────────────────────────────
     component FeedList: Item {
         id: fl
-
         required property var listModel
         required property Component listDelegate
         required property string emptyText
-
         clip: true
 
         ListView {
@@ -265,190 +232,359 @@ Item {
         }
     }
 
-    // ── PR row delegate ───────────────────────────────────────────────────────
+    // ── Main feed delegate ────────────────────────────────────────────────────
+    // Covers itemType: "pr", "comment", "mention"
     Component {
-        id: prDelegate
+        id: feedDelegate
 
         Item {
-            id: prRow
+            id: card
 
             required property var modelData
 
             width: ListView.view?.width ?? 0
-            implicitHeight: prInner.implicitHeight + Tokens.padding.small * 2
 
-            readonly property bool isOverdue: modelData.isOverdue ?? false
+            // Action strip height (slides in on hover)
+            property bool showActions: hov.hovered
 
+            implicitHeight: cardInner.implicitHeight + actionArea.implicitHeight +
+                            Tokens.padding.normal * 2  // generous vertical padding
+
+            HoverHandler { id: hov }
+
+            // Card background
             StyledRect {
                 anchors.fill: parent
-                radius: Tokens.rounding.small
-                color: prRow.isOverdue
-                    ? Qt.rgba(1, 0.59, 0, 0.12)
-                    : prRow.modelData.hasMentions
-                      ? Qt.rgba(0.9, 0.2, 0.2, 0.1)
-                      : Colours.tPalette.m3surfaceVariant
-                opacity: 0.9
+                radius: Tokens.rounding.normal
+                color: {
+                    if (card.modelData.itemType === "pr") {
+                        if (card.modelData.isOverdue)   return Qt.rgba(1, 0.59, 0, 0.14);
+                        if (card.modelData.hasMentions) return Qt.rgba(0.9, 0.2, 0.2, 0.10);
+                    }
+                    if (card.modelData.itemType === "mention") return Qt.rgba(0.9, 0.2, 0.2, 0.10);
+                    return Colours.tPalette.m3surfaceVariant;
+                }
+                opacity: card.modelData.isMuted ? 0.5 : 0.85
             }
 
             ColumnLayout {
-                id: prInner
-
+                id: cardInner
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: Tokens.padding.small
-                anchors.rightMargin: Tokens.padding.small
-                spacing: 2
+                anchors.top: parent.top
+                anchors.margins: Tokens.padding.normal
+                spacing: Tokens.spacing.smaller
 
+                // ── PR card content ──
                 RowLayout {
+                    visible: card.modelData.itemType === "pr"
                     Layout.fillWidth: true
                     spacing: Tokens.spacing.smaller
 
-                    MaterialIcon {
-                        visible: prRow.modelData.hasMentions || prRow.modelData.hasUnreadComments
-                        text: prRow.modelData.hasMentions ? "mark_unread_chat_alt" : "chat"
-                        color: prRow.modelData.hasMentions
-                            ? (GitWatcher._configData?.colors?.mention ?? "#e53935")
-                            : Colours.palette.m3secondary
-                        font.pixelSize: Tokens.font.sizes.small
+                    // Type chip
+                    StyledRect {
+                        implicitWidth: chipLabel.implicitWidth + 8
+                        implicitHeight: chipLabel.implicitHeight + 3
+                        radius: Tokens.rounding.full
+                        color: card.modelData.isOverdue
+                            ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")
+                            : card.modelData.hasMentions
+                              ? (GitWatcher._configData?.colors?.mention ?? "#e53935")
+                              : Colours.palette.m3surfaceVariant
+
+                        StyledText {
+                            id: chipLabel
+                            anchors.centerIn: parent
+                            text: card.modelData.isOverdue ? qsTr("stalled") :
+                                  card.modelData.hasMentions ? qsTr("mention") :
+                                  card.modelData.hasUnreadComments ? qsTr("comment") :
+                                  card.modelData.isOwned ? qsTr("mine") : qsTr("PR")
+                            font.pixelSize: Tokens.font.sizes.small - 1
+                            color: (card.modelData.isOverdue || card.modelData.hasMentions)
+                                ? "white" : Colours.palette.m3secondary
+                        }
                     }
 
                     StyledText {
                         Layout.fillWidth: true
-                        text: prRow.modelData.title
+                        text: card.modelData.title
                         elide: Text.ElideRight
-                        font.weight: prRow.modelData.isOwned ? 600 : 400
+                        font.weight: card.modelData.isOwned ? 600 : 400
                     }
 
                     StyledText {
-                        text: prRow.isOverdue
-                            ? qsTr("stalled %1").arg(_formatAge(prRow.modelData.stallMinutes ?? prRow.modelData.ageMinutes))
-                            : _formatAge(prRow.modelData.ageMinutes)
+                        text: card.modelData.isOverdue
+                            ? qsTr("⚠ %1").arg(_fmtAge(card.modelData.stallMinutes ?? card.modelData.ageMinutes))
+                            : _fmtAge(card.modelData.ageMinutes)
                         font.pixelSize: Tokens.font.sizes.small
-                        color: prRow.isOverdue
+                        color: card.modelData.isOverdue
                             ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")
                             : Colours.palette.m3secondary
                     }
                 }
 
                 RowLayout {
+                    visible: card.modelData.itemType === "pr"
                     Layout.fillWidth: true
                     spacing: Tokens.spacing.smaller
 
                     StyledText {
-                        text: prRow.modelData.repo
+                        text: (card.modelData.project !== "" ? card.modelData.project + " · " : "") + card.modelData.repo
                         font.pixelSize: Tokens.font.sizes.small
                         color: Colours.palette.m3secondary
                         elide: Text.ElideRight
-                        Layout.maximumWidth: 120
+                        Layout.fillWidth: true
                     }
 
-                    StyledText { text: "→"; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
-
                     StyledText {
-                        text: prRow.modelData.targetBranch
+                        text: "→ " + card.modelData.targetBranch
                         font.pixelSize: Tokens.font.sizes.small
                         color: Colours.palette.m3secondary
                         elide: Text.ElideRight
-                        Layout.maximumWidth: 100
+                        Layout.maximumWidth: 110
+                    }
+                }
+
+                // ── Comment / Mention card content ──
+                RowLayout {
+                    visible: card.modelData.itemType === "comment" || card.modelData.itemType === "mention"
+                    Layout.fillWidth: true
+                    spacing: Tokens.spacing.smaller
+
+                    MaterialIcon {
+                        text: card.modelData.itemType === "mention" ? "alternate_email" : "chat"
+                        color: card.modelData.itemType === "mention"
+                            ? (GitWatcher._configData?.colors?.mention ?? "#e53935")
+                            : Colours.palette.m3secondary
+                        font.pixelSize: Tokens.font.sizes.normal
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Tokens.spacing.smaller
+
+                            StyledText {
+                                text: card.modelData.author ?? ""
+                                font.weight: 500
+                                font.pixelSize: Tokens.font.sizes.small
+                                color: Colours.palette.m3primary
+                                elide: Text.ElideRight
+                                Layout.maximumWidth: 100
+                            }
+
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: "· " + (card.modelData.title ?? "")
+                                font.pixelSize: Tokens.font.sizes.small
+                                color: Colours.palette.m3secondary
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: card.modelData.excerpt ?? ""
+                            font.pixelSize: Tokens.font.sizes.small - 1
+                            color: Colours.palette.m3onSurface
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                        }
                     }
                 }
             }
 
+            // ── Action strip (slides in on hover) ────────────────────────────
+            Item {
+                id: actionArea
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: cardInner.bottom
+                anchors.topMargin: card.showActions ? Tokens.spacing.smaller : 0
+
+                implicitHeight: card.showActions ? actionRow.implicitHeight + Tokens.padding.small : 0
+                clip: true
+                opacity: card.showActions ? 1 : 0
+
+                Behavior on implicitHeight { Anim { type: Anim.StandardSmall } }
+                Behavior on opacity { Anim { type: Anim.StandardSmall } }
+
+                RowLayout {
+                    id: actionRow
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: Tokens.padding.normal
+                    anchors.rightMargin: Tokens.padding.normal
+                    spacing: Tokens.spacing.small
+
+                    // Open in browser
+                    Item {
+                        implicitWidth: openIcon.implicitWidth + Tokens.padding.small * 2
+                        implicitHeight: openIcon.implicitHeight + Tokens.padding.small
+                        MaterialIcon { id: openIcon; anchors.centerIn: parent; text: "open_in_new"; color: Colours.palette.m3secondary; font.pixelSize: Tokens.font.sizes.normal }
+                        StateLayer { anchors.fill: parent; radius: Tokens.rounding.small; color: Colours.palette.m3onSurface; onClicked: Qt.openUrlExternally(card.modelData.url) }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    // Mute / Unmute
+                    Item {
+                        implicitWidth: muteRow.implicitWidth + Tokens.padding.small * 2
+                        implicitHeight: muteRow.implicitHeight + Tokens.padding.small
+
+                        RowLayout {
+                            id: muteRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            MaterialIcon { text: card.modelData.isMuted ? "notifications_off" : "notifications"; color: Colours.palette.m3secondary; font.pixelSize: Tokens.font.sizes.normal }
+                            StyledText { text: card.modelData.isMuted ? qsTr("Unmute") : qsTr("Mute"); font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
+                        }
+
+                        StateLayer {
+                            anchors.fill: parent; radius: Tokens.rounding.small; color: Colours.palette.m3onSurface
+                            onClicked: {
+                                if (card.modelData.isMuted) GitWatcher.unmute(card.modelData.prId);
+                                else GitWatcher.mute(card.modelData.prId);
+                            }
+                        }
+                    }
+
+                    // Dismiss
+                    Item {
+                        implicitWidth: dismissRow.implicitWidth + Tokens.padding.small * 2
+                        implicitHeight: dismissRow.implicitHeight + Tokens.padding.small
+
+                        RowLayout {
+                            id: dismissRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            MaterialIcon { text: "archive"; color: Colours.palette.m3error; font.pixelSize: Tokens.font.sizes.normal }
+                            StyledText { text: qsTr("Dismiss"); font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3error }
+                        }
+
+                        StateLayer {
+                            anchors.fill: parent; radius: Tokens.rounding.small; color: Colours.palette.m3onSurface
+                            onClicked: GitWatcher.dismiss(card.modelData.prId)
+                        }
+                    }
+                }
+            }
+
+            // Tap/click whole card to open URL (when not tapping actions)
             StateLayer {
-                anchors.fill: parent
-                radius: Tokens.rounding.small
-                color: Colours.palette.m3onSurface
-                onClicked: Qt.openUrlExternally(prRow.modelData.url)
+                anchors.fill: parent; radius: Tokens.rounding.normal; color: Colours.palette.m3onSurface
+                onClicked: Qt.openUrlExternally(card.modelData.url)
             }
         }
     }
 
-    // ── Comment/mention row delegate ──────────────────────────────────────────
+    // ── Archive delegate ──────────────────────────────────────────────────────
+    // Simpler card, no hover actions
     Component {
-        id: feedItemDelegate
+        id: archiveDelegate
 
         Item {
-            id: feedRow
+            id: archCard
 
             required property var modelData
 
             width: ListView.view?.width ?? 0
-            implicitHeight: feedInner.implicitHeight + Tokens.padding.small * 2
+            implicitHeight: archInner.implicitHeight + Tokens.padding.normal * 2
 
             StyledRect {
-                anchors.fill: parent
-                radius: Tokens.rounding.small
-                color: Colours.tPalette.m3surfaceVariant
-                opacity: 0.8
+                anchors.fill: parent; radius: Tokens.rounding.normal
+                color: archCard.modelData.itemType === "pr_archived"
+                    ? Qt.rgba(0.9, 0.5, 0.1, 0.10)
+                    : Colours.tPalette.m3surfaceVariant
+                opacity: 0.6
             }
 
-            ColumnLayout {
-                id: feedInner
-
-                anchors.left: parent.left
-                anchors.right: parent.right
+            RowLayout {
+                id: archInner
+                anchors.left: parent.left; anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: Tokens.padding.small
-                anchors.rightMargin: Tokens.padding.small
-                spacing: 2
+                anchors.leftMargin: Tokens.padding.normal
+                anchors.rightMargin: Tokens.padding.normal
+                spacing: Tokens.spacing.small
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Tokens.spacing.smaller
-
-                    StyledText {
-                        text: feedRow.modelData.author
-                        font.weight: 500
-                        font.pixelSize: Tokens.font.sizes.small
-                        color: Colours.palette.m3primary
-                        elide: Text.ElideRight
-                        Layout.maximumWidth: 100
-                    }
+                // Status chip
+                StyledRect {
+                    implicitWidth: archChip.implicitWidth + 8
+                    implicitHeight: archChip.implicitHeight + 3
+                    radius: Tokens.rounding.full
+                    color: archCard.modelData.itemType === "pr_archived"
+                        ? Colours.palette.m3secondaryContainer
+                        : Colours.palette.m3surfaceVariant
 
                     StyledText {
-                        Layout.fillWidth: true
-                        text: "· " + feedRow.modelData.prTitle
-                        font.pixelSize: Tokens.font.sizes.small
+                        id: archChip; anchors.centerIn: parent
+                        text: archCard.modelData.itemType === "pr_archived" ? qsTr("dismissed") : qsTr("merged")
+                        font.pixelSize: Tokens.font.sizes.small - 1
                         color: Colours.palette.m3secondary
-                        elide: Text.ElideRight
                     }
                 }
 
-                StyledText {
-                    Layout.fillWidth: true
-                    text: feedRow.modelData.excerpt
-                    font.pixelSize: Tokens.font.sizes.small - 1
-                    color: Colours.palette.m3onSurface
-                    wrapMode: Text.WordWrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
+                ColumnLayout {
+                    Layout.fillWidth: true; spacing: 1
+
+                    StyledText {
+                        Layout.fillWidth: true; text: archCard.modelData.title
+                        elide: Text.ElideRight
+                        font.pixelSize: Tokens.font.sizes.small
+                        opacity: 0.8
+                    }
+
+                    StyledText {
+                        text: archCard.modelData.repo + " · " + _fmtAge(archCard.modelData.ageMinutes)
+                        font.pixelSize: Tokens.font.sizes.small - 1
+                        color: Colours.palette.m3secondary
+                        opacity: 0.7
+                    }
+                }
+
+                // Undismiss button (only for archived/dismissed)
+                Item {
+                    visible: archCard.modelData.itemType === "pr_archived"
+                    implicitWidth: undismissIcon.implicitWidth + Tokens.padding.small * 2
+                    implicitHeight: undismissIcon.implicitHeight + Tokens.padding.small
+
+                    MaterialIcon {
+                        id: undismissIcon; anchors.centerIn: parent
+                        text: "unarchive"; color: Colours.palette.m3secondary
+                        font.pixelSize: Tokens.font.sizes.normal
+                    }
+
+                    StateLayer {
+                        anchors.fill: parent; radius: Tokens.rounding.small; color: Colours.palette.m3onSurface
+                        onClicked: GitWatcher.undismiss(archCard.modelData.prId)
+                    }
                 }
             }
 
             StateLayer {
-                anchors.fill: parent
-                radius: Tokens.rounding.small
-                color: Colours.palette.m3onSurface
-                onClicked: Qt.openUrlExternally(feedRow.modelData.url)
+                anchors.fill: parent; radius: Tokens.rounding.normal; color: Colours.palette.m3onSurface
+                onClicked: Qt.openUrlExternally(archCard.modelData.url)
             }
         }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    function _formatAge(minutes: int): string {
+    function _fmtAge(minutes: int): string {
+        if (!minutes || minutes < 1) return qsTr("now");
         if (minutes < 60) return qsTr("%1m").arg(minutes);
         const h = Math.floor(minutes / 60);
         const m = minutes % 60;
         return m > 0 ? qsTr("%1h%2m").arg(h).arg(m) : qsTr("%1h").arg(h);
     }
 
-    function _formatTimestamp(iso: string): string {
+    function _fmtTime(iso: string): string {
         if (!iso) return "";
-        try {
-            return new Date(iso).toLocaleTimeString(Qt.locale(), Locale.ShortFormat);
-        } catch (e) {
-            return iso;
-        }
+        try { return new Date(iso).toLocaleTimeString(Qt.locale(), Locale.ShortFormat); }
+        catch (e) { return iso; }
     }
 }

@@ -14,13 +14,18 @@ Singleton {
     // Public state (read by UI)
     // -----------------------------------------------------------------------
     property var prs: []
+    property var completedPrs: []
     property var commentItems: []
     property var mentionItems: []
-    property int overdueCount: 0
-    property int mentionCount: 0
+    property int overdueCount: 0   // raw from daemon, unfiltered
+    property int mentionCount: 0   // raw from daemon, unfiltered
     property bool loading: false
     property string lastError: ""
     property string lastUpdated: ""
+
+    // Mute/dismiss state managed here (not by daemon)
+    property var mutedIds: []      // [prId, ...]
+    property var dismissedIds: []  // [prId, ...]
 
     readonly property bool configured: {
         const d = _configData;
@@ -29,9 +34,187 @@ Singleton {
                typeof d.organizationUrl === "string" && d.organizationUrl.length > 0;
     }
 
-    // Active when not in game mode and user hasn't hidden it in settings
     readonly property bool active: !GameMode.enabled &&
                                    (GlobalConfig.bar?.status?.showGitWatcher !== false)
+
+    // -----------------------------------------------------------------------
+    // Derived sets (fast lookup)
+    // -----------------------------------------------------------------------
+    readonly property var _mutedSet: {
+        const s = {};
+        for (const id of mutedIds) s[id] = true;
+        return s;
+    }
+    readonly property var _dismissedSet: {
+        const s = {};
+        for (const id of dismissedIds) s[id] = true;
+        return s;
+    }
+
+    // -----------------------------------------------------------------------
+    // Computed feeds
+    // -----------------------------------------------------------------------
+
+    // Main feed: non-dismissed PRs + non-dismissed comments/mentions
+    readonly property var mainFeedItems: {
+        const items = [];
+        for (const pr of prs) {
+            if (_dismissedSet[pr.id]) continue;
+            items.push({
+                uid: `pr-${pr.id}`,
+                prId: pr.id,
+                itemType: "pr",
+                title: pr.title,
+                repo: pr.repo,
+                project: pr.project ?? "",
+                url: pr.url,
+                sourceBranch: pr.sourceBranch ?? "",
+                targetBranch: pr.targetBranch ?? "",
+                ageMinutes: pr.ageMinutes ?? 0,
+                stallMinutes: pr.stallMinutes ?? 0,
+                isOverdue: pr.isOverdue ?? false,
+                isOwned: pr.isOwned ?? false,
+                isApproved: pr.isApproved ?? false,
+                hasMentions: pr.hasMentions ?? false,
+                hasUnreadComments: pr.hasUnreadComments ?? false,
+                isMuted: !!_mutedSet[pr.id],
+            });
+        }
+        for (const c of commentItems) {
+            if (_dismissedSet[c.prId]) continue;
+            items.push({
+                uid: `comment-${c.prId}-${c.author}`,
+                prId: c.prId,
+                itemType: "comment",
+                title: c.prTitle ?? "",
+                repo: c.repo ?? "",
+                project: c.project ?? "",
+                url: c.url,
+                author: c.author ?? "",
+                excerpt: c.excerpt ?? "",
+                isMuted: !!_mutedSet[c.prId],
+            });
+        }
+        for (const m of mentionItems) {
+            if (_dismissedSet[m.prId]) continue;
+            items.push({
+                uid: `mention-${m.prId}-${m.author}`,
+                prId: m.prId,
+                itemType: "mention",
+                title: m.prTitle ?? "",
+                repo: m.repo ?? "",
+                project: m.project ?? "",
+                url: m.url,
+                author: m.author ?? "",
+                excerpt: m.excerpt ?? "",
+                isMuted: !!_mutedSet[m.prId],
+            });
+        }
+        // Sort: overdue first, mentions/comments next, then rest by age
+        items.sort((a, b) => {
+            const score = x => (x.isOverdue ? 8 : 0) + (x.itemType === "mention" ? 4 : 0) +
+                               (x.hasMentions ? 4 : 0) + (x.itemType === "comment" ? 2 : 0) +
+                               (x.hasUnreadComments ? 2 : 0);
+            const diff = score(b) - score(a);
+            if (diff !== 0) return diff;
+            return (b.stallMinutes ?? b.ageMinutes ?? 0) - (a.stallMinutes ?? a.ageMinutes ?? 0);
+        });
+        return items;
+    }
+
+    // Archive feed: dismissed open PRs at top, then completed PRs
+    readonly property var archiveFeedItems: {
+        const items = [];
+        for (const pr of prs) {
+            if (!_dismissedSet[pr.id]) continue;
+            items.push({
+                uid: `arch-${pr.id}`,
+                prId: pr.id,
+                itemType: "pr_archived",
+                title: pr.title,
+                repo: pr.repo,
+                project: pr.project ?? "",
+                url: pr.url,
+                targetBranch: pr.targetBranch ?? "",
+                ageMinutes: pr.ageMinutes ?? 0,
+                isOwned: pr.isOwned ?? false,
+            });
+        }
+        for (const pr of completedPrs) {
+            items.push({
+                uid: `comp-${pr.id}`,
+                prId: pr.id,
+                itemType: "pr_completed",
+                title: pr.title,
+                repo: pr.repo,
+                project: pr.project ?? "",
+                url: pr.url,
+                targetBranch: pr.targetBranch ?? "",
+                ageMinutes: pr.ageMinutes ?? 0,
+                isOwned: pr.isOwned ?? false,
+            });
+        }
+        return items;
+    }
+
+    // Attention count: non-muted, non-dismissed items needing action
+    readonly property int attentionCount: {
+        let n = 0;
+        for (const pr of prs) {
+            if (_dismissedSet[pr.id] || _mutedSet[pr.id]) continue;
+            if (pr.isOverdue || pr.hasMentions || pr.hasUnreadComments) n++;
+        }
+        n += commentItems.filter(c => !_dismissedSet[c.prId] && !_mutedSet[c.prId]).length;
+        n += mentionItems.filter(m => !_dismissedSet[m.prId] && !_mutedSet[m.prId]).length;
+        return n;
+    }
+
+    // Overdue count excluding muted/dismissed (drives icon state)
+    readonly property int filteredOverdueCount: {
+        let n = 0;
+        for (const pr of prs) {
+            if (!_dismissedSet[pr.id] && !_mutedSet[pr.id] && (pr.isOverdue ?? false)) n++;
+        }
+        return n;
+    }
+
+    // -----------------------------------------------------------------------
+    // Mute / Dismiss operations
+    // -----------------------------------------------------------------------
+    function mute(prId: int): void {
+        if (!_mutedSet[prId])
+            mutedIds = [...mutedIds, prId];
+        _saveMuted();
+    }
+
+    function unmute(prId: int): void {
+        mutedIds = mutedIds.filter(x => x !== prId);
+        _saveMuted();
+    }
+
+    function dismiss(prId: int): void {
+        if (!_dismissedSet[prId])
+            dismissedIds = [...dismissedIds, prId];
+        if (!_mutedSet[prId])   // also mute so daemon skips notifications
+            mutedIds = [...mutedIds, prId];
+        _saveMuted();
+    }
+
+    function undismiss(prId: int): void {
+        dismissedIds = dismissedIds.filter(x => x !== prId);
+        _saveMuted();
+    }
+
+    function _saveMuted(): void {
+        const content = JSON.stringify({muted: mutedIds, dismissed: dismissedIds}, null, 2);
+        saveMutedProc.command = [
+            "python3", "-c",
+            "import sys, os; open(sys.argv[1],'w').write(sys.argv[2])",
+            root._mutedPath,
+            content
+        ];
+        saveMutedProc.running = true;
+    }
 
     // -----------------------------------------------------------------------
     // Private state
@@ -40,47 +223,48 @@ Singleton {
 
     readonly property string _configPath: Quickshell.env("HOME") + "/.config/caelestia/git-watcher.json"
     readonly property string _statePath: Quickshell.env("HOME") + "/.local/state/caelestia/git-watcher-state.json"
+    readonly property string _mutedPath: Quickshell.env("HOME") + "/.local/state/caelestia/git-watcher-muted.json"
     readonly property string _pidPath: Quickshell.env("HOME") + "/.local/state/caelestia/git-watcher.pid"
     readonly property string _daemonPath: Paths.config + "/../caelestia/scripts/git-watcher.py"
 
     // -----------------------------------------------------------------------
-    // Config file watcher
+    // File watchers
     // -----------------------------------------------------------------------
     FileView {
         id: configFile
-
         path: root._configPath
         watchChanges: true
         printErrors: false
-
         onLoaded: {
-            try {
-                root._configData = JSON.parse(text());
-            } catch (e) {
-                console.warn("GitWatcher: failed to parse config:", e);
-                root._configData = null;
-            }
+            try { root._configData = JSON.parse(text()); }
+            catch (e) { console.warn("GitWatcher: config parse error:", e); root._configData = null; }
         }
         onFileChanged: reload()
-        onLoadFailed: err => {
-            console.warn("GitWatcher: config load failed:", err);
-            root._configData = null;
-        }
-
+        onLoadFailed: err => { root._configData = null; }
         Component.onCompleted: reload()
     }
 
-    // -----------------------------------------------------------------------
-    // State file watcher — updates UI when daemon writes new data
-    // -----------------------------------------------------------------------
     FileView {
         id: stateFile
-
         path: root._statePath
         watchChanges: true
         printErrors: false
-
         onLoaded: root._applyState(text())
+        onFileChanged: reload()
+    }
+
+    FileView {
+        id: mutedFile
+        path: root._mutedPath
+        watchChanges: true
+        printErrors: false
+        onLoaded: {
+            try {
+                const d = JSON.parse(text());
+                root.mutedIds = d.muted ?? [];
+                root.dismissedIds = d.dismissed ?? [];
+            } catch (e) {}
+        }
         onFileChanged: reload()
     }
 
@@ -88,6 +272,7 @@ Singleton {
         try {
             const s = JSON.parse(text);
             root.prs = s.prs ?? [];
+            root.completedPrs = s.completedPrs ?? [];
             root.commentItems = s.commentItems ?? [];
             root.mentionItems = s.mentionItems ?? [];
             root.overdueCount = s.overdueCount ?? 0;
@@ -101,35 +286,25 @@ Singleton {
     }
 
     // -----------------------------------------------------------------------
-    // Daemon process (long-running, one instance)
+    // Daemon process
     // -----------------------------------------------------------------------
     readonly property bool _daemonShouldRun: active && configured
 
     Process {
         id: daemon
-
         command: ["python3", root._daemonPath]
         running: root._daemonShouldRun
-
-        onExited: exitCode => {
-            if (root._daemonShouldRun)
-                restartTimer.start();
-        }
+        onExited: exitCode => { if (root._daemonShouldRun) restartTimer.start(); }
     }
 
     Timer {
         id: restartTimer
-
-        interval: 5000
-        repeat: false
-        onTriggered: {
-            if (root._daemonShouldRun && !daemon.running)
-                daemon.running = true;
-        }
+        interval: 5000; repeat: false
+        onTriggered: { if (root._daemonShouldRun && !daemon.running) daemon.running = true; }
     }
 
     // -----------------------------------------------------------------------
-    // Manual refresh — send SIGHUP to daemon
+    // Manual refresh
     // -----------------------------------------------------------------------
     function refresh(): void {
         loading = true;
@@ -138,7 +313,6 @@ Singleton {
 
     Process {
         id: sighupProc
-
         command: ["bash", "-c",
             "PID=$(cat " + root._pidPath + " 2>/dev/null) && [ -n \"$PID\" ] && kill -HUP \"$PID\""
         ]
@@ -146,16 +320,13 @@ Singleton {
     }
 
     Timer {
-        id: loadingFallback
-        interval: 8000
-        repeat: false
+        id: loadingFallback; interval: 8000; repeat: false
         onTriggered: root.loading = false
     }
 
     // -----------------------------------------------------------------------
-    // Apply config from the settings modal.
-    // Lives in the singleton (always alive) so close() in the modal can be
-    // called immediately — no async dependency that would leave the overlay stuck.
+    // Apply config (from settings modal — always-alive singleton so close() is
+    // called synchronously from the modal before any async work starts)
     // -----------------------------------------------------------------------
     function applyConfig(jsonText: string): void {
         applyWriteProc.pendingJson = jsonText;
@@ -164,10 +335,7 @@ Singleton {
 
     Process {
         id: applyWriteProc
-
         property string pendingJson: ""
-
-        // Pass JSON as a direct argv element — no shell quoting issues
         command: [
             "python3", "-c",
             "import sys, os; open(sys.argv[1],'w').write(sys.argv[2]); os.chmod(sys.argv[1], 0o600)",
@@ -179,9 +347,13 @@ Singleton {
 
     Process {
         id: applySighupProc
-
         command: ["bash", "-c",
             "PID=$(cat " + root._pidPath + " 2>/dev/null) && [ -n \"$PID\" ] && kill -HUP \"$PID\""
         ]
+    }
+
+    // Async write for muted/dismissed file
+    Process {
+        id: saveMutedProc
     }
 }

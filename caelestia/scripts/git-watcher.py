@@ -33,6 +33,7 @@ CONFIG_PATH = os.path.join(HOME, ".config", "caelestia", "git-watcher.json")
 STATE_DIR = os.path.join(HOME, ".local", "state", "caelestia")
 STATE_PATH = os.path.join(STATE_DIR, "git-watcher-state.json")
 REPOS_PATH = os.path.join(STATE_DIR, "git-watcher-repos.json")
+MUTED_PATH = os.path.join(STATE_DIR, "git-watcher-muted.json")
 PID_PATH = os.path.join(STATE_DIR, "git-watcher.pid")
 
 os.makedirs(STATE_DIR, exist_ok=True)
@@ -161,6 +162,27 @@ def fetch_pr_threads(project: str, repo_id: str, pr_id: int) -> list[dict]:
     if not data:
         return []
     return data.get("value", [])
+
+
+def fetch_completed_prs(project: str, repo_id: str, top: int = 3) -> list[dict]:
+    url = (
+        f"{_project_url(project)}/_apis/git/repositories/{repo_id}/pullrequests"
+        f"?searchCriteria.status=completed&$top={top}&api-version=7.1"
+    )
+    data = _api_get(url)
+    if not data:
+        return []
+    return data.get("value", [])
+
+
+def _load_muted() -> tuple[set, set]:
+    """Return (muted_ids, dismissed_ids) from the muted state file."""
+    try:
+        with open(MUTED_PATH) as f:
+            d = json.load(f)
+        return set(d.get("muted", [])), set(d.get("dismissed", []))
+    except Exception:
+        return set(), set()
 
 
 # ---------------------------------------------------------------------------
@@ -337,8 +359,11 @@ def _poll() -> dict:
     # Write repos list grouped by project for config UI
     _write_json(REPOS_PATH, grouped_repos)
 
+    muted_ids, dismissed_ids = _load_muted()
+
     active_pr_ids: set = set()
     result_prs = []
+    completed_pr_list: list = []
     comment_items: list = []
     mention_items: list = []
     overdue_count = 0
@@ -370,10 +395,13 @@ def _poll() -> dict:
 
                 is_approved = any(r.get("vote", 0) >= 5 for r in pr.get("reviewers", []))
 
+                # Skip all notifications for muted or dismissed PRs
+                suppressed = pr_id in muted_ids or pr_id in dismissed_ids
+
                 # Detect new PR
                 if pr_id not in _seen_pr_ids:
                     _seen_pr_ids.add(pr_id)
-                    if notify_new_pr:
+                    if notify_new_pr and not suppressed:
                         branch = _strip_branch(pr.get("sourceRefName", ""))
                         _notify(
                             f"New PR: {pr['title'][:60]}",
@@ -386,14 +414,15 @@ def _poll() -> dict:
                 is_overdue = stall_min >= overdue_minutes and not is_approved
                 if is_overdue and pr_id not in _overdue_notified:
                     _overdue_notified.add(pr_id)
-                    h, m = int(stall_min // 60), int(stall_min % 60)
-                    _notify_critical_with_action(
-                        f"PR stalled {h}h {m}m without activity",
-                        f"{pr['title'][:60]}\n{repo['name']}",
-                        pr_url,
-                        icon="dialog-warning",
-                        sound="alert",
-                    )
+                    if not suppressed:
+                        h, m = int(stall_min // 60), int(stall_min % 60)
+                        _notify_critical_with_action(
+                            f"PR stalled {h}h {m}m without activity",
+                            f"{pr['title'][:60]}\n{repo['name']}",
+                            pr_url,
+                            icon="dialog-warning",
+                            sound="alert",
+                        )
                 elif not is_overdue:
                     _overdue_notified.discard(pr_id)
 
@@ -434,7 +463,7 @@ def _poll() -> dict:
                                 }
                                 if feed_item not in mention_items:
                                     mention_items.append(feed_item)
-                                if notify_mention and key not in _mention_notified:
+                                if notify_mention and key not in _mention_notified and not suppressed:
                                     _mention_notified.add(key)
                                     _notify_critical_with_action(
                                         f"Mentioned in: {pr['title'][:50]}",
@@ -457,7 +486,7 @@ def _poll() -> dict:
                                 }
                                 if feed_item not in comment_items:
                                     comment_items.append(feed_item)
-                                if notify_comment and key not in _comment_notified:
+                                if notify_comment and key not in _comment_notified and not suppressed:
                                     _comment_notified.add(key)
                                     _notify(
                                         f"Comment on your PR",
@@ -497,6 +526,30 @@ def _poll() -> dict:
                     "isReviewer": is_reviewer,
                 })
 
+    # Collect completed PRs for archive tab (last 3 per watched repo, cap 20 total)
+    for project_entry in grouped_repos:
+        project = project_entry["project"]
+        for repo in project_entry["repos"]:
+            if not _should_watch(project, repo["name"]):
+                continue
+            for pr in fetch_completed_prs(project, repo["id"], top=3):
+                pr_id_c = pr["pullRequestId"]
+                completed_pr_list.append({
+                    "id": pr_id_c,
+                    "title": pr.get("title", ""),
+                    "repo": repo["name"],
+                    "project": project,
+                    "sourceBranch": _strip_branch(pr.get("sourceRefName", "")),
+                    "targetBranch": _strip_branch(pr.get("targetRefName", "")),
+                    "status": "completed",
+                    "url": _pr_url(project, repo["name"], pr_id_c),
+                    "ageMinutes": int(_age_minutes(pr.get("creationDate", ""))),
+                })
+            if len(completed_pr_list) >= 20:
+                break
+        if len(completed_pr_list) >= 20:
+            break
+
     # Clean up tracking state for PRs no longer active
     gone = set(_seen_pr_ids) - active_pr_ids
     for gid in gone:
@@ -509,6 +562,7 @@ def _poll() -> dict:
         "lastUpdated": _now_iso(),
         "error": None,
         "prs": result_prs,
+        "completedPrs": completed_pr_list[:20],
         "overdueCount": overdue_count,
         "mentionCount": mention_count,
         "commentItems": comment_items[-20:],
@@ -539,6 +593,7 @@ def _write_error(msg: str):
         "lastUpdated": _now_iso(),
         "error": msg,
         "prs": [],
+        "completedPrs": [],
         "overdueCount": 0,
         "mentionCount": 0,
         "commentItems": [],

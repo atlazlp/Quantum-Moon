@@ -227,17 +227,17 @@ StyledRect {
                     animate: true
                     fill: 1
                     text: {
-                        if (GitWatcher.overdueCount > 0) return "data_alert";
-                        if (GitWatcher.prs.length > 0) return "data_info_alert";
+                        if (GitWatcher.filteredOverdueCount > 0) return "data_alert";
+                        if (GitWatcher.mainFeedItems.length > 0) return "data_info_alert";
                         return "check";
                     }
-                    color: GitWatcher.overdueCount > 0
+                    color: GitWatcher.filteredOverdueCount > 0
                         ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")
                         : root.colour
 
-                    // Pulse only when there are overdue PRs
+                    // Pulse only when there are overdue PRs (unfiltered)
                     SequentialAnimation on opacity {
-                        running: GitWatcher.overdueCount > 0
+                        running: GitWatcher.filteredOverdueCount > 0
                         loops: Animation.Infinite
                         alwaysRunToEnd: true
 
@@ -256,10 +256,9 @@ StyledRect {
                     }
                 }
 
-                // Notification dot — mentions/comments, bottom-left to avoid
-                // overlapping the top-right dot that the data_info_alert icon has
+                // Notification dot — mentions/comments, bottom-left
                 Rectangle {
-                    visible: GitWatcher.mentionCount > 0
+                    visible: GitWatcher.mentionItems.filter(m => !GitWatcher._dismissedSet[m.prId] && !GitWatcher._mutedSet[m.prId]).length > 0
 
                     width: 7
                     height: 7
