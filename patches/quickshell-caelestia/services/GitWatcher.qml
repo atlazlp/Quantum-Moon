@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Caelestia
 import Caelestia.Config
+import qs.utils
 
 Singleton {
     id: root
@@ -19,7 +20,12 @@ Singleton {
     property string lastError: ""
     property string lastUpdated: ""
 
-    readonly property bool configured: _configData?.pat?.length > 0 && _configData?.organizationUrl?.length > 0
+    readonly property bool configured: {
+        const d = _configData;
+        return d !== null && typeof d === "object" &&
+               typeof d.pat === "string" && d.pat.length > 0 &&
+               typeof d.organizationUrl === "string" && d.organizationUrl.length > 0;
+    }
 
     // Active when not in game mode and user hasn't hidden it in settings
     readonly property bool active: !GameMode.enabled &&
@@ -49,11 +55,17 @@ Singleton {
             try {
                 root._configData = JSON.parse(text());
             } catch (e) {
+                console.warn("GitWatcher: failed to parse config:", e);
                 root._configData = null;
             }
         }
         onFileChanged: reload()
-        onLoadFailed: root._configData = null
+        onLoadFailed: err => {
+            console.warn("GitWatcher: config load failed:", err);
+            root._configData = null;
+        }
+
+        Component.onCompleted: reload()
     }
 
     // -----------------------------------------------------------------------
@@ -86,18 +98,21 @@ Singleton {
 
     // -----------------------------------------------------------------------
     // Daemon process (long-running, one instance)
+    // Declarative binding mirrors the nmcli monitor pattern in BarVpn.qml:
+    // Quickshell starts the process when running becomes true and kills it
+    // when it becomes false.
     // -----------------------------------------------------------------------
+    readonly property bool _daemonShouldRun: active && configured
+
     Process {
         id: daemon
 
         command: ["python3", root._daemonPath]
-        running: false   // controlled via onActiveChanged
+        running: root._daemonShouldRun
 
         onExited: exitCode => {
-            if (root.active && root.configured) {
-                // Restart after 5 s on unexpected exit
+            if (root._daemonShouldRun)
                 restartTimer.start();
-            }
         }
     }
 
@@ -107,33 +122,9 @@ Singleton {
         interval: 5000
         repeat: false
         onTriggered: {
-            if (root.active && root.configured)
+            if (root._daemonShouldRun && !daemon.running)
                 daemon.running = true;
         }
-    }
-
-    // -----------------------------------------------------------------------
-    // Lifecycle
-    // -----------------------------------------------------------------------
-    onActiveChanged: {
-        if (active && configured) {
-            daemon.running = true;
-        } else {
-            daemon.running = false;
-        }
-    }
-
-    onConfiguredChanged: {
-        if (active && configured) {
-            daemon.running = true;
-        } else if (!configured) {
-            daemon.running = false;
-        }
-    }
-
-    Component.onCompleted: {
-        if (active && configured)
-            daemon.running = true;
     }
 
     // -----------------------------------------------------------------------
