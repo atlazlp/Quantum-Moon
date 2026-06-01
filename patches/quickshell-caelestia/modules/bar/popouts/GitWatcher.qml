@@ -308,9 +308,17 @@ Item {
                     }
 
                     StyledText {
+                        // Show time since last commit push (stallMinutes) as it's
+                        // closer to "last update" than PR creation time (ageMinutes).
+                        // Falls back to ageMinutes when stallMinutes is 0 (no commits).
+                        readonly property int displayMin: {
+                            const stall = card.modelData.stallMinutes ?? 0;
+                            const age   = card.modelData.ageMinutes  ?? 0;
+                            return (stall > 0) ? stall : age;
+                        }
                         text: card.modelData.isOverdue
-                            ? "stalled " + _fmtAge(card.modelData.stallMinutes ?? card.modelData.ageMinutes)
-                            : _fmtAge(card.modelData.ageMinutes)
+                            ? "stalled " + _fmtAge(displayMin)
+                            : _fmtAge(displayMin)
                         font.pixelSize: Tokens.font.sizes.small
                         color: card.modelData.isOverdue
                             ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")

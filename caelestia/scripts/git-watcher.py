@@ -331,9 +331,12 @@ def _parse_date(s: str) -> datetime | None:
     if not s:
         return None
     try:
-        # Azure DevOps returns ISO 8601 with optional fractional seconds
         s = s.rstrip("Z")
         if "." in s:
+            # Azure DevOps / .NET serializes DateTime with 7 fractional digits.
+            # Python's %f only handles up to 6 — truncate to avoid ValueError.
+            base, frac = s.rsplit(".", 1)
+            s = f"{base}.{frac[:6]}"
             fmt = "%Y-%m-%dT%H:%M:%S.%f"
         else:
             fmt = "%Y-%m-%dT%H:%M:%S"
