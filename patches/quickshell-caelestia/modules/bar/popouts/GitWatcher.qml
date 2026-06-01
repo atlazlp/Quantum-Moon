@@ -115,7 +115,7 @@ Item {
                         anchors.fill: parent
                         radius: Tokens.rounding.small
                         color: tabItem.isActive
-                            ? Colours.palette.m3primaryContainer
+                            ? Colours.palette.m3primary
                             : Colours.tPalette.m3surfaceVariant
                         opacity: tabItem.isActive ? 1 : 0.6
                         Behavior on color { Anim { type: Anim.StandardSmall } }
@@ -132,7 +132,7 @@ Item {
                             font.pixelSize: Tokens.font.sizes.small
                             font.weight: tabItem.isActive ? 600 : 400
                             color: tabItem.isActive
-                                ? Colours.palette.m3onPrimaryContainer
+                                ? Colours.palette.m3onPrimary
                                 : Colours.palette.m3onSurface
                         }
 
@@ -142,14 +142,14 @@ Item {
                             width: cntLbl.implicitWidth + 6
                             height: cntLbl.implicitHeight + 2
                             radius: Tokens.rounding.full
-                            color: tabItem.isActive ? Colours.palette.m3primary : Colours.palette.m3surfaceVariant
+                            color: tabItem.isActive ? Colours.palette.m3onPrimary : Colours.palette.m3surfaceVariant
 
                             StyledText {
                                 id: cntLbl
                                 anchors.centerIn: parent
                                 text: tabItem.modelData.count.toString()
                                 font.pixelSize: Tokens.font.sizes.small - 1
-                                color: tabItem.isActive ? "white" : Colours.palette.m3secondary
+                                color: tabItem.isActive ? Colours.palette.m3primary : Colours.palette.m3secondary
                             }
                         }
                     }
