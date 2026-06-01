@@ -85,6 +85,8 @@ for s in cursor-clean.sh workspace-overview-toggle.sh window-alt-tab-cycle.sh wi
     install -m755 "${CAE}/scripts/${s}" "${DEST_C}/scripts/${s}"
   fi
 done
+# Clear Python bytecode cache for scripts so updated .py files always run fresh
+rm -rf "${DEST_C}/scripts/__pycache__"
 rm -f "${DEST_C}/scripts/window-picker-fuzzel.sh" "${DEST_C}/scripts/qm-launcher-log.sh"
 install -m644 "${CAE}/hypr-user.conf" "${DEST_C}/hypr-user.conf"
 if [[ -x "${CAE}/scripts/gen-hypr-launcher-interrupts.sh" ]]; then
