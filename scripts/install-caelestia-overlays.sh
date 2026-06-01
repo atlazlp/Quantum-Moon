@@ -80,7 +80,7 @@ mkdir -p "${HOME}/.config/systemd/user"
 install -m644 "${ROOT}/config/systemd/user/audio-analog-mic-setup.service" "${HOME}/.config/systemd/user/audio-analog-mic-setup.service"
 systemctl --user daemon-reload 2>/dev/null || true
 systemctl --user enable --now audio-analog-mic-setup.service 2>/dev/null || true
-for s in cursor-clean.sh workspace-overview-toggle.sh window-alt-tab-cycle.sh window_menu.py hypr-focus-window.sh activity-monitor.sh build-hyprspace.sh hypr-group-mouse5.sh hyprresume-save.sh proton-hide-ghost-windows.sh locked-sleep-after.sh suspend-resume-watch.sh qm-shuffle-if-unlocked.sh toggle-special-window.sh game-mode-resources.sh; do
+for s in cursor-clean.sh workspace-overview-toggle.sh window-alt-tab-cycle.sh window_menu.py hypr-focus-window.sh activity-monitor.sh build-hyprspace.sh hypr-group-mouse5.sh hyprresume-save.sh proton-hide-ghost-windows.sh locked-sleep-after.sh suspend-resume-watch.sh qm-shuffle-if-unlocked.sh toggle-special-window.sh game-mode-resources.sh git-watcher.py init-git-watcher.sh; do
   if [[ -f "${CAE}/scripts/${s}" ]]; then
     install -m755 "${CAE}/scripts/${s}" "${DEST_C}/scripts/${s}"
   fi

@@ -46,7 +46,8 @@
             { "id": "power", "enabled": true }
         ],
         "status": {
-            "showVpn": true
+            "showVpn": true,
+            "showGitWatcher": true
         },
         "workspaces": {
             "perMonitorWorkspaces": true
@@ -70,7 +71,9 @@
     "utilities": {
         "toasts": {
             "configLoaded": false,
-            "vpnChanged": true
+            "vpnChanged": true,
+            "gitWatcherNewPr": true,
+            "gitWatcherComment": true
         }
     }
 }

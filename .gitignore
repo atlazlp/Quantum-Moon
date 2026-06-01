@@ -1,5 +1,6 @@
 backup/*.zip
 caelestia/shell-vpn.local.json
+caelestia/git-watcher.local.json
 backup/*.tar.gz
 **/.DS_Store
 __pycache__/

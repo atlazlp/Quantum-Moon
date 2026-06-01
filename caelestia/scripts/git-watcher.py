@@ -1,0 +1,508 @@
+#!/usr/bin/env python3
+"""
+Azure DevOps PR watcher daemon for Caelestia bar.
+
+Polls configured Azure DevOps project for active PRs across all enabled repos,
+writes state to ~/.local/state/caelestia/git-watcher-state.json, and sends
+desktop notifications for new PRs, overdue PRs (> threshold), and PR comments
+or mentions targeting the configured identity.
+
+Config: ~/.config/caelestia/git-watcher.json
+State:  ~/.local/state/caelestia/git-watcher-state.json
+Repos:  ~/.local/state/caelestia/git-watcher-repos.json
+PID:    ~/.local/state/caelestia/git-watcher.pid
+"""
+
+import base64
+import json
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+HOME = os.path.expanduser("~")
+CONFIG_PATH = os.path.join(HOME, ".config", "caelestia", "git-watcher.json")
+STATE_DIR = os.path.join(HOME, ".local", "state", "caelestia")
+STATE_PATH = os.path.join(STATE_DIR, "git-watcher-state.json")
+REPOS_PATH = os.path.join(STATE_DIR, "git-watcher-repos.json")
+PID_PATH = os.path.join(STATE_DIR, "git-watcher.pid")
+
+os.makedirs(STATE_DIR, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Globals (reloaded on SIGHUP)
+# ---------------------------------------------------------------------------
+_config = {}
+_lock = threading.Lock()
+_stop_event = threading.Event()
+
+# Track state across polls to detect new/changed items
+_seen_pr_ids: set = set()          # PRs we've already notified about (new PR)
+_pr_first_seen: dict = {}          # pr_id -> datetime when first observed active
+_pr_last_updated: dict = {}        # pr_id -> lastUpdatedDate string from API
+_overdue_notified: set = set()     # pr_ids for which overdue notif was sent
+_mention_notified: set = set()     # "pr_id:thread_id" for sent mention notifs
+_comment_notified: set = set()     # "pr_id:thread_id" for sent comment notifs (owned PRs)
+
+# ---------------------------------------------------------------------------
+# Config loading
+# ---------------------------------------------------------------------------
+
+def load_config() -> dict:
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg = json.load(f)
+        return cfg
+    except Exception as e:
+        _write_error(f"Failed to load config: {e}")
+        return {}
+
+
+def get_cfg(key, default=None):
+    return _config.get(key, default)
+
+
+def _auth_header() -> str:
+    pat = get_cfg("pat", "")
+    if not pat:
+        return ""
+    encoded = base64.b64encode(f":{pat}".encode()).decode()
+    return f"Basic {encoded}"
+
+
+# ---------------------------------------------------------------------------
+# Azure DevOps REST helpers
+# ---------------------------------------------------------------------------
+
+def _api_get(url: str) -> dict | list | None:
+    auth = _auth_header()
+    if not auth:
+        return None
+    req = urllib.request.Request(url, headers={
+        "Authorization": auth,
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        print(f"[git-watcher] HTTP {e.code} for {url}: {body[:200]}", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"[git-watcher] Request failed for {url}: {e}", file=sys.stderr)
+        return None
+
+
+def _base_url() -> str:
+    org = get_cfg("organizationUrl", "").rstrip("/")
+    project = get_cfg("project", "")
+    return f"{org}/{project}"
+
+
+def fetch_repos() -> list[dict]:
+    url = f"{_base_url()}/_apis/git/repositories?api-version=7.1"
+    data = _api_get(url)
+    if not data:
+        return []
+    return data.get("value", [])
+
+
+def fetch_active_prs(repo_id: str) -> list[dict]:
+    url = (
+        f"{_base_url()}/_apis/git/repositories/{repo_id}/pullrequests"
+        f"?searchCriteria.status=active&api-version=7.1"
+    )
+    data = _api_get(url)
+    if not data:
+        return []
+    return data.get("value", [])
+
+
+def fetch_pr_threads(repo_id: str, pr_id: int) -> list[dict]:
+    url = (
+        f"{_base_url()}/_apis/git/repositories/{repo_id}"
+        f"/pullrequests/{pr_id}/threads?api-version=7.1"
+    )
+    data = _api_get(url)
+    if not data:
+        return []
+    return data.get("value", [])
+
+
+# ---------------------------------------------------------------------------
+# Notification helpers
+# ---------------------------------------------------------------------------
+
+def _notify(summary: str, body: str, urgency: str = "normal", expire_ms: int = 5000):
+    """Send a desktop notification via notify-send."""
+    args = [
+        "notify-send",
+        "--app-name", "GitWatcher",
+        "--urgency", urgency,
+        "--expire-time", str(expire_ms),
+        "--icon", "system-software-update",
+        summary,
+        body,
+    ]
+    try:
+        subprocess.Popen(args)
+    except Exception as e:
+        print(f"[git-watcher] notify-send failed: {e}", file=sys.stderr)
+
+
+def _notify_critical_with_action(summary: str, body: str, url: str):
+    """
+    Send a critical non-expiring notification with an Open action.
+    Blocks in a background thread until the user responds; opens the URL on click.
+    """
+    def _run():
+        args = [
+            "notify-send",
+            "--app-name", "GitWatcher",
+            "--urgency", "critical",
+            "--expire-time", "0",
+            "--icon", "system-software-update",
+            "--action", "default:Open PR",
+            "--wait",
+            summary,
+            body,
+        ]
+        try:
+            result = subprocess.run(args, capture_output=True, text=True, timeout=86400)
+            if result.returncode == 0 and result.stdout.strip() == "default":
+                subprocess.Popen(["xdg-open", url])
+        except Exception as e:
+            print(f"[git-watcher] critical notify failed: {e}", file=sys.stderr)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+
+# ---------------------------------------------------------------------------
+# PR processing helpers
+# ---------------------------------------------------------------------------
+
+def _pr_url(repo_name: str, pr_id: int) -> str:
+    org = get_cfg("organizationUrl", "").rstrip("/")
+    project = get_cfg("project", "")
+    return f"{org}/{project}/_git/{repo_name}/pullrequest/{pr_id}"
+
+
+def _strip_branch(ref: str) -> str:
+    return ref.removeprefix("refs/heads/")
+
+
+def _parse_date(s: str) -> datetime | None:
+    if not s:
+        return None
+    try:
+        # Azure DevOps returns ISO 8601 with optional fractional seconds
+        s = s.rstrip("Z")
+        if "." in s:
+            fmt = "%Y-%m-%dT%H:%M:%S.%f"
+        else:
+            fmt = "%Y-%m-%dT%H:%M:%S"
+        return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _age_minutes(created_at: str) -> float:
+    dt = _parse_date(created_at)
+    if not dt:
+        return 0.0
+    delta = datetime.now(timezone.utc) - dt
+    return delta.total_seconds() / 60.0
+
+
+def _my_identity() -> str:
+    return get_cfg("myIdentity", "").lower()
+
+
+def _is_owned(pr: dict) -> bool:
+    identity = _my_identity()
+    if not identity:
+        return False
+    creator = pr.get("createdBy", {})
+    unique = (creator.get("uniqueName") or "").lower()
+    mail = (creator.get("mailAddress") or "").lower()
+    return identity in (unique, mail)
+
+
+def _is_reviewer(pr: dict) -> bool:
+    identity = _my_identity()
+    if not identity:
+        return False
+    for rv in pr.get("reviewers", []):
+        unique = (rv.get("uniqueName") or "").lower()
+        mail = (rv.get("mailAddress") or "").lower()
+        if identity in (unique, mail):
+            return True
+    return False
+
+
+def _has_mention(text: str) -> bool:
+    identity = _my_identity()
+    if not identity:
+        return False
+    # Azure DevOps @mentions appear as @<display name> or in HTML as <a href="...">@name</a>
+    # Also check plain email presence in comment text
+    username = identity.split("@")[0].lower()
+    t = text.lower()
+    return (f"@{username}" in t) or (identity in t)
+
+
+# ---------------------------------------------------------------------------
+# Main poll cycle
+# ---------------------------------------------------------------------------
+
+def _poll() -> dict:
+    """
+    Perform one poll cycle. Returns the state dict to write.
+    """
+    ignored_repos: list = get_cfg("ignoredRepos", [])
+    overdue_minutes: int = get_cfg("notifications", {}).get("overdueMinutes", 60)
+    notify_new_pr: bool = get_cfg("notifications", {}).get("newPr", True)
+    notify_comment: bool = get_cfg("notifications", {}).get("prComment", True)
+    notify_mention: bool = get_cfg("notifications", {}).get("prMention", True)
+
+    repos = fetch_repos()
+    if not repos:
+        return {"lastUpdated": _now_iso(), "error": "Failed to fetch repos", "prs": [],
+                "overdueCount": 0, "mentionCount": 0}
+
+    # Write repos list for config UI (always fresh)
+    _write_json(REPOS_PATH, [{"id": r["id"], "name": r["name"]} for r in repos])
+
+    active_pr_ids: set = set()
+    result_prs = []
+    overdue_count = 0
+    mention_count = 0
+
+    for repo in repos:
+        if repo["name"] in ignored_repos:
+            continue
+
+        prs = fetch_active_prs(repo["id"])
+        for pr in prs:
+            pr_id = pr["id"]
+            active_pr_ids.add(pr_id)
+
+            created_at = pr.get("creationDate", "")
+            if pr_id not in _pr_first_seen:
+                _pr_first_seen[pr_id] = datetime.now(timezone.utc)
+
+            age_min = _age_minutes(created_at)
+            is_owned = _is_owned(pr)
+            is_reviewer = _is_reviewer(pr)
+            last_updated = pr.get("lastMergeSourceCommit", {}).get("commitId") or pr.get("lastUpdatedDate", "")
+
+            # Detect new PR
+            if pr_id not in _seen_pr_ids:
+                _seen_pr_ids.add(pr_id)
+                if notify_new_pr:
+                    branch = _strip_branch(pr.get("sourceRefName", ""))
+                    _notify(
+                        f"New PR: {pr['title'][:60]}",
+                        f"{repo['name']} → {_strip_branch(pr.get('targetRefName', ''))} | {branch}",
+                    )
+
+            # Detect overdue
+            if age_min >= overdue_minutes and pr_id not in _overdue_notified:
+                _overdue_notified.add(pr_id)
+                _notify_critical_with_action(
+                    f"PR waiting {int(age_min // 60)}h {int(age_min % 60)}m",
+                    f"{pr['title'][:60]}\n{repo['name']}",
+                    _pr_url(repo["name"], pr_id),
+                )
+
+            # Check threads for comments/mentions (only when PR updated or first time)
+            has_unread_comments = False
+            has_mentions = False
+            prev_updated = _pr_last_updated.get(pr_id)
+            threads_changed = prev_updated != last_updated
+
+            if threads_changed and (is_owned or is_reviewer):
+                _pr_last_updated[pr_id] = last_updated
+                threads = fetch_pr_threads(repo["id"], pr_id)
+                for thread in threads:
+                    if thread.get("isDeleted"):
+                        continue
+                    thread_id = thread.get("id", 0)
+                    for comment in thread.get("comments", []):
+                        if comment.get("commentType") == "system":
+                            continue
+                        author = comment.get("author", {})
+                        author_unique = (author.get("uniqueName") or "").lower()
+                        author_mail = (author.get("mailAddress") or "").lower()
+                        my = _my_identity()
+                        is_mine = my in (author_unique, author_mail)
+                        content = comment.get("content") or ""
+                        key = f"{pr_id}:{thread_id}"
+
+                        if _has_mention(content) and not is_mine:
+                            has_mentions = True
+                            if notify_mention and key not in _mention_notified:
+                                _mention_notified.add(key)
+                                _notify_critical_with_action(
+                                    f"You were mentioned in: {pr['title'][:50]}",
+                                    f"{author.get('displayName', 'Someone')} in {repo['name']}",
+                                    _pr_url(repo["name"], pr_id),
+                                )
+
+                        if is_owned and not is_mine:
+                            has_unread_comments = True
+                            if notify_comment and key not in _comment_notified:
+                                _comment_notified.add(key)
+                                _notify(
+                                    f"New comment on your PR",
+                                    f"{author.get('displayName', 'Someone')}: {content[:80]}\n{pr['title'][:50]}",
+                                )
+            else:
+                # Carry over previous state from last iteration
+                for prev in result_prs:
+                    if prev.get("id") == pr_id:
+                        has_unread_comments = prev.get("hasUnreadComments", False)
+                        has_mentions = prev.get("hasMentions", False)
+                        break
+
+            if age_min >= overdue_minutes:
+                overdue_count += 1
+            if has_mentions:
+                mention_count += 1
+
+            result_prs.append({
+                "id": pr_id,
+                "title": pr.get("title", ""),
+                "repo": repo["name"],
+                "sourceBranch": _strip_branch(pr.get("sourceRefName", "")),
+                "targetBranch": _strip_branch(pr.get("targetRefName", "")),
+                "status": pr.get("status", "active"),
+                "createdAt": created_at,
+                "url": _pr_url(repo["name"], pr_id),
+                "ageMinutes": int(age_min),
+                "hasUnreadComments": has_unread_comments,
+                "hasMentions": has_mentions,
+                "isOwned": is_owned,
+                "isReviewer": is_reviewer,
+            })
+
+    # Clean up tracking state for PRs no longer active
+    gone = set(_seen_pr_ids) - active_pr_ids
+    for gid in gone:
+        _seen_pr_ids.discard(gid)
+        _pr_first_seen.pop(gid, None)
+        _pr_last_updated.pop(gid, None)
+        # Keep overdue/mention sets (don't re-notify if PR briefly disappears and comes back)
+
+    return {
+        "lastUpdated": _now_iso(),
+        "error": None,
+        "prs": result_prs,
+        "overdueCount": overdue_count,
+        "mentionCount": mention_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Utility writers
+# ---------------------------------------------------------------------------
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _write_json(path: str, data):
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+    except Exception as e:
+        print(f"[git-watcher] write {path} failed: {e}", file=sys.stderr)
+
+
+def _write_error(msg: str):
+    _write_json(STATE_PATH, {
+        "lastUpdated": _now_iso(),
+        "error": msg,
+        "prs": [],
+        "overdueCount": 0,
+        "mentionCount": 0,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Signal handling
+# ---------------------------------------------------------------------------
+
+def _on_sighup(signum, frame):
+    """Reload config on SIGHUP."""
+    global _config
+    print("[git-watcher] SIGHUP received — reloading config", file=sys.stderr)
+    _config = load_config()
+
+
+def _on_sigterm(signum, frame):
+    print("[git-watcher] SIGTERM received — shutting down", file=sys.stderr)
+    _stop_event.set()
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main():
+    global _config
+
+    # Write PID file
+    try:
+        with open(PID_PATH, "w") as f:
+            f.write(str(os.getpid()))
+    except Exception as e:
+        print(f"[git-watcher] PID write failed: {e}", file=sys.stderr)
+
+    signal.signal(signal.SIGHUP, _on_sighup)
+    signal.signal(signal.SIGTERM, _on_sigterm)
+
+    _config = load_config()
+    if not _config:
+        _write_error("Config not found or invalid. Run init-git-watcher.sh first.")
+        sys.exit(1)
+
+    pat = get_cfg("pat", "")
+    if not pat:
+        _write_error("No PAT configured. Open the GitWatcher config and enter your PAT.")
+        sys.exit(1)
+
+    print("[git-watcher] starting", file=sys.stderr)
+
+    while not _stop_event.is_set():
+        try:
+            state = _poll()
+            _write_json(STATE_PATH, state)
+        except Exception as e:
+            print(f"[git-watcher] poll error: {e}", file=sys.stderr)
+            _write_error(f"Poll error: {e}")
+
+        interval = int(get_cfg("pollIntervalSeconds", 60))
+        _stop_event.wait(timeout=max(10, interval))
+
+    # Cleanup PID file on exit
+    try:
+        os.unlink(PID_PATH)
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    main()

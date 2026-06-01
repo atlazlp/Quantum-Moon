@@ -40,6 +40,9 @@ Singleton {
         if (enabled) {
             setDynamicConfs();
             root.applyHeavyOff();
+            // Auto-disconnect VPN when entering game mode
+            if (BarVpn.connected)
+                BarVpn.toggle();
             if (GlobalConfig.utilities.toasts.gameModeChanged)
                 Toaster.toast(qsTr("Game mode enabled"), qsTr("Disabled Hyprland animations, blur, gaps and shadows"), "gamepad");
         } else {

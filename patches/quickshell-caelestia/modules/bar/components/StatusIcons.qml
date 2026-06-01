@@ -209,6 +209,76 @@ StyledRect {
             }
         }
 
+        // Azure DevOps PR watcher
+        WrappedLoader {
+            name: "gitwatcher"
+            active: Config.bar.status.showGitWatcher !== false && GitWatcher.active && GitWatcher.configured
+
+            sourceComponent: Item {
+                id: gwItem
+
+                implicitWidth: gwIcon.implicitWidth
+                implicitHeight: gwIcon.implicitHeight
+
+                MaterialIcon {
+                    id: gwIcon
+
+                    anchors.centerIn: parent
+                    animate: true
+                    text: "fork_right"
+                    fill: GitWatcher.prs.length > 0 ? 1 : 0
+                    color: {
+                        if (GitWatcher.overdueCount > 0)
+                            return GitWatcher._configData?.colors?.overdue ?? "#ff9500";
+                        if (GitWatcher.mentionCount > 0)
+                            return GitWatcher._configData?.colors?.mention ?? "#e53935";
+                        return root.colour;
+                    }
+
+                    SequentialAnimation on opacity {
+                        running: GitWatcher.overdueCount > 0 || GitWatcher.mentionCount > 0
+                        loops: Animation.Infinite
+                        alwaysRunToEnd: true
+
+                        Anim {
+                            from: 1
+                            to: 0.3
+                            duration: Tokens.anim.durations.large
+                            easing: Tokens.anim.standardAccel
+                        }
+                        Anim {
+                            from: 0.3
+                            to: 1
+                            duration: Tokens.anim.durations.large
+                            easing: Tokens.anim.standardDecel
+                        }
+                    }
+                }
+
+                // Notification dot — mentions or unread comments
+                Rectangle {
+                    visible: GitWatcher.mentionCount > 0
+
+                    width: 7
+                    height: 7
+                    radius: 4
+
+                    color: GitWatcher._configData?.colors?.mention ?? "#e53935"
+
+                    anchors.top: gwIcon.top
+                    anchors.right: gwIcon.right
+                    anchors.topMargin: 1
+                    anchors.rightMargin: 1
+                }
+
+                StateLayer {
+                    anchors.fill: parent
+                    radius: Tokens.rounding.full
+                    color: root.colour
+                }
+            }
+        }
+
         // Bluetooth section
         WrappedLoader {
             Layout.preferredHeight: implicitHeight
