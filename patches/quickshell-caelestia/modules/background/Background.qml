@@ -72,7 +72,7 @@ Variants {
             id: clockLoader
 
             asynchronous: true
-            active: Config.background.desktopClock.enabled !== false
+            active: Config.background.desktopClock.enabled !== false && !GameMode.enabled
 
             anchors.margins: Tokens.padding.large * 2
             anchors.leftMargin: {

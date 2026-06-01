@@ -10,8 +10,20 @@ last=""
 last_restart=0
 watchdog_tick=0
 
+game_mode_active() {
+  [[ -f "${XDG_RUNTIME_DIR:-/tmp}/caelestia-game-mode.active" ]]
+}
+
 sync_pause() {
   local want sock
+  if game_mode_active; then
+    if qm_mpvpaper_running; then
+      qm_video_stop
+      last="game-mode-stopped"
+    fi
+    return 0
+  fi
+
   sock="$(qm_video_sock)"
   [[ -S "${sock}" ]] || { last=""; return 0; }
 
@@ -27,6 +39,8 @@ sync_pause() {
 }
 
 maybe_restart_video() {
+  game_mode_active && return 0
+
   local slug vid now mode_dir
   now="$(date +%s)"
   # At most one automatic restart every 8s (avoids tight loops).

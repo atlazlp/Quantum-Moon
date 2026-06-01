@@ -41,6 +41,17 @@ Scope {
     }
 
     readonly property bool enabled: !(GlobalConfig.general.idle.inhibitWhenAudio && (Players.list.some(p => p.isPlaying) || root.pipewirePlaybackActive))
+    readonly property bool shuffleOnIdle: GlobalConfig.quantumMoon?.shuffleOnIdle !== false
+
+    function idleActionNeedsShuffle(action: var): bool {
+        if (!root.shuffleOnIdle || !root.enabled || QuantumMoon.planetLocked)
+            return false;
+        if (action === "lock")
+            return true;
+        if (typeof action === "string" && /dpms\s+off/i.test(action))
+            return true;
+        return false;
+    }
 
     function armLockedSleep(): void {
         if (!root.enabled)
@@ -55,7 +66,14 @@ Scope {
     function handleIdleAction(action: var): void {
         if (!action)
             return;
+        if (root.idleActionNeedsShuffle(action)) {
+            QuantumMoon.startInstantThen(() => root.runIdleAction(action));
+            return;
+        }
+        root.runIdleAction(action);
+    }
 
+    function runIdleAction(action: var): void {
         if (action === "lock") {
             lock.sessionLock();
             return;

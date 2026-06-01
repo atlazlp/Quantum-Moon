@@ -7,6 +7,7 @@ import Quickshell.Services.Pipewire
 import Caelestia
 import Caelestia.Config
 import Caelestia.Services
+import qs.services
 
 Singleton {
     id: root
@@ -271,7 +272,7 @@ Singleton {
     CavaProvider {
         id: cava
 
-        bars: GlobalConfig.services.visualiserBars
+        bars: GameMode.enabled ? 0 : GlobalConfig.services.visualiserBars
     }
 
     BeatTracker {

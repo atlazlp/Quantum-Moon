@@ -11,6 +11,10 @@ if [[ -z "${slug}" ]]; then
   exit 1
 fi
 
+if [[ -f "${XDG_RUNTIME_DIR:-/tmp}/caelestia-game-mode.active" ]]; then
+  exit 0
+fi
+
 mkdir -p "${STATE_DIR}"
 printf '%s\n' "${slug}" >"${STATE_DIR}/last-video.slug"
 

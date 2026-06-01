@@ -23,6 +23,7 @@ Singleton {
     property string pendingApplySlug: ""
     property var _requestQueue: []
     property string _pickResolvedSlug: ""
+    property var _instantDoneCallback: null
 
     readonly property var wheelPlanetSlugs: ["brittle-hollow", "dark-bramble", "giants-deep", "hourglass-twins", "timber-hearth"]
     readonly property int wheelZeroPlanetIndex: 2
@@ -278,12 +279,37 @@ Singleton {
     }
 
     function startInstant(): void {
-        if (root.planetLocked)
+        root.startInstantThen(null);
+    }
+
+    function startInstantThen(callback: var): void {
+        if (root.planetLocked) {
+            if (callback)
+                callback();
             return;
-        if (root.active || pickProc.running || fadeOut.running || postSpinFadeTimer.running)
+        }
+        if (callback) {
+            if (root._instantDoneCallback) {
+                const prev = root._instantDoneCallback;
+                root._instantDoneCallback = function () {
+                    prev();
+                    callback();
+                };
+            } else {
+                root._instantDoneCallback = callback;
+            }
+        }
+        if (instantProc.running)
             return;
         instantProc.command = ["bash", "-c", "f='" + Paths.home + "/.config/caelestia/quantum-moon-root'; [[ -f \"$f\" ]] && read -r QM < \"$f\" && \"$QM/scripts/qm-random\""];
         instantProc.running = true;
+    }
+
+    function _finishInstantShuffle(): void {
+        const cb = root._instantDoneCallback;
+        root._instantDoneCallback = null;
+        if (cb)
+            cb();
     }
 
     function applyPlanetSlug(slug: string): void {
@@ -307,6 +333,8 @@ Singleton {
 
     Process {
         id: instantProc
+
+        onExited: root._finishInstantShuffle()
     }
 
     Process {

@@ -24,7 +24,8 @@
     },
     "quantumMoon": {
         "enabled": true,
-        "showOnHover": true
+        "showOnHover": true,
+        "shuffleOnIdle": true
     },
     "bar": {
         "excludedScreens": ["HDMI-A-1", "DP-3"],

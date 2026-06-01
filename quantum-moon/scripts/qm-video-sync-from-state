@@ -9,4 +9,5 @@ state="${XDG_STATE_HOME:-${HOME}/.local/state}/quantum-moon/current.json"
 [[ -f "${state}" ]] || exit 0
 slug="$(jq -r '.slug // empty' "${state}")"
 [[ -n "${slug}" ]] || exit 0
+[[ -f "${XDG_RUNTIME_DIR:-/tmp}/caelestia-game-mode.active" ]] && exit 0
 exec "${QM}/scripts/qm-video-restart" "${slug}"

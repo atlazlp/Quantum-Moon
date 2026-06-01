@@ -44,6 +44,35 @@ Singleton {
 
     signal configReloaded
 
+    readonly property bool gamePerfMode: extras.options["animations:enabled"] === 0
+
+    property bool _pendingWindowRefresh: false
+
+    Timer {
+        id: windowRefreshCoalesce
+
+        interval: 150
+        repeat: false
+
+        onTriggered: {
+            root._pendingWindowRefresh = false;
+            Hyprland.refreshToplevels();
+            Hyprland.refreshWorkspaces();
+        }
+    }
+
+    function scheduleWindowRefresh(): void {
+        if (!root.gamePerfMode) {
+            Hyprland.refreshToplevels();
+            Hyprland.refreshWorkspaces();
+            return;
+        }
+        if (!root._pendingWindowRefresh) {
+            root._pendingWindowRefresh = true;
+            windowRefreshCoalesce.restart();
+        }
+    }
+
     function dispatch(request: string): void {
         Hyprland.dispatch(request);
     }
@@ -180,8 +209,7 @@ Singleton {
                 Hyprland.refreshWorkspaces();
                 Hyprland.refreshMonitors();
             } else if (["openwindow", "closewindow", "movewindow"].includes(n)) {
-                Hyprland.refreshToplevels();
-                Hyprland.refreshWorkspaces();
+                root.scheduleWindowRefresh();
             } else if (n.includes("mon")) {
                 Hyprland.refreshMonitors();
             } else if (n.includes("workspace")) {

@@ -23,6 +23,7 @@ need=( \
   "$PATCH/services/QuantumMoon.qml" \
   "$PATCH/services/LauncherItemOverrides.qml" \
   "$PATCH/services/ProtonGhosts.qml" \
+  "$PATCH/services/GameMode.qml" \
   "$PATCH/services/NotifFocus.qml" \
   "$PATCH/services/BarVpn.qml" \
   "$PATCH/services/Hypr.qml" \
@@ -92,6 +93,7 @@ install -m644 "$PATCH/services/Visibilities.qml" "$DST/services/Visibilities.qml
 install -m644 "$PATCH/services/QuantumMoon.qml" "$DST/services/QuantumMoon.qml"
 install -m644 "$PATCH/services/LauncherItemOverrides.qml" "$DST/services/LauncherItemOverrides.qml"
 install -m644 "$PATCH/services/ProtonGhosts.qml" "$DST/services/ProtonGhosts.qml"
+install -m644 "$PATCH/services/GameMode.qml" "$DST/services/GameMode.qml"
 install -m644 "$PATCH/services/NotifFocus.qml" "$DST/services/NotifFocus.qml"
 install -m644 "$PATCH/services/BarVpn.qml" "$DST/services/BarVpn.qml"
 install -m644 "$PATCH/services/Hypr.qml" "$DST/services/Hypr.qml"

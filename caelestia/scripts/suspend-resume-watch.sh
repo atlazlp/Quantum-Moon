@@ -14,18 +14,9 @@ resume_displays() {
 }
 
 shuffle_quantum_moon_before_sleep() {
-	local state="${HOME}/.local/state/quantum-moon/state.json"
-	if [[ -f "${state}" ]] && command -v jq >/dev/null 2>&1; then
-		if jq -e '.planetLocked == true' "${state}" >/dev/null 2>&1; then
-			return
-		fi
-	fi
-	local root_file="${HOME}/.config/caelestia/quantum-moon-root"
-	[[ -f "${root_file}" ]] || return
-	local QM=""
-	read -r QM <"${root_file}" || return
-	[[ -n "${QM}" && -x "${QM}/scripts/qm-random" ]] || return
-	"${QM}/scripts/qm-random"
+	local shuffle="${HOME}/.config/caelestia/scripts/qm-shuffle-if-unlocked.sh"
+	[[ -x "${shuffle}" ]] || return
+	"${shuffle}"
 }
 
 command -v dbus-monitor >/dev/null 2>&1 || exit 0
