@@ -118,7 +118,6 @@ Item {
                             ? Colours.palette.m3primary
                             : Colours.tPalette.m3surfaceVariant
                         opacity: tabItem.isActive ? 1 : 0.6
-                        Behavior on color { Anim { type: Anim.StandardSmall } }
                     }
 
                     // Centered content regardless of badge visibility
