@@ -167,35 +167,57 @@ def fetch_pr_threads(project: str, repo_id: str, pr_id: int) -> list[dict]:
 # Notification helpers
 # ---------------------------------------------------------------------------
 
-def _notify(summary: str, body: str, urgency: str = "normal", expire_ms: int = 5000):
-    """Send a desktop notification via notify-send."""
+_SOUND_PATHS = {
+    "message": "/usr/share/sounds/freedesktop/stereo/message.oga",
+    "alert":   "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga",
+}
+
+
+def _play_sound(kind: str = "message") -> None:
+    path = _SOUND_PATHS.get(kind, _SOUND_PATHS["message"])
+    if os.path.exists(path):
+        try:
+            subprocess.Popen(["paplay", path],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"[git-watcher] paplay failed: {e}", file=sys.stderr)
+
+
+def _notify(summary: str, body: str, urgency: str = "normal",
+            expire_ms: int = 5000, icon: str = "mail-message-new",
+            sound: str = "message") -> None:
+    """Send a desktop notification and play a sound."""
     args = [
         "notify-send",
         "--app-name", "GitWatcher",
         "--urgency", urgency,
         "--expire-time", str(expire_ms),
-        "--icon", "system-software-update",
+        "--icon", icon,
         summary,
         body,
     ]
     try:
         subprocess.Popen(args)
+        _play_sound(sound)
     except Exception as e:
         print(f"[git-watcher] notify-send failed: {e}", file=sys.stderr)
 
 
-def _notify_critical_with_action(summary: str, body: str, url: str):
+def _notify_critical_with_action(summary: str, body: str, url: str,
+                                  icon: str = "mail-message-new",
+                                  sound: str = "message") -> None:
     """
     Send a critical non-expiring notification with an Open action.
     Blocks in a background thread until the user responds; opens the URL on click.
     """
     def _run():
+        _play_sound(sound)
         args = [
             "notify-send",
             "--app-name", "GitWatcher",
             "--urgency", "critical",
             "--expire-time", "0",
-            "--icon", "system-software-update",
+            "--icon", icon,
             "--action", "default:Open PR",
             "--wait",
             summary,
@@ -220,11 +242,13 @@ def _pr_url(project: str, repo_name: str, pr_id: int) -> str:
     return f"{_org_url()}/{project}/_git/{repo_name}/pullrequest/{pr_id}"
 
 
-def _is_ignored(project: str, repo_name: str) -> bool:
-    ignored: list = get_cfg("ignoredRepos", [])
+def _should_watch(project: str, repo_name: str) -> bool:
+    """True if this repo is in the watchedRepos allowlist. Empty list = watch nothing."""
+    watched: list = get_cfg("watchedRepos", [])
+    if not watched:
+        return False
     qualified = f"{project}/{repo_name}"
-    # Support both old bare-name format and new Project/repo format
-    return qualified in ignored or repo_name in ignored
+    return qualified in watched or repo_name in watched
 
 
 def _strip_branch(ref: str) -> str:
@@ -307,20 +331,23 @@ def _poll() -> dict:
     grouped_repos = fetch_all_repos_grouped()
     if not grouped_repos:
         return {"lastUpdated": _now_iso(), "error": "Failed to fetch repos", "prs": [],
-                "overdueCount": 0, "mentionCount": 0}
+                "overdueCount": 0, "mentionCount": 0,
+                "commentItems": [], "mentionItems": []}
 
     # Write repos list grouped by project for config UI
     _write_json(REPOS_PATH, grouped_repos)
 
     active_pr_ids: set = set()
     result_prs = []
+    comment_items: list = []
+    mention_items: list = []
     overdue_count = 0
     mention_count = 0
 
     for project_entry in grouped_repos:
         project = project_entry["project"]
         for repo in project_entry["repos"]:
-            if _is_ignored(project, repo["name"]):
+            if not _should_watch(project, repo["name"]):
                 continue
 
             prs = fetch_active_prs(project, repo["id"])
@@ -333,18 +360,14 @@ def _poll() -> dict:
                     _pr_first_seen[pr_id] = datetime.now(timezone.utc)
 
                 age_min = _age_minutes(created_at)
-                # lastMergeSourceCommit.author.date = when author last pushed to the branch
-                # Falls back to creationDate if no commits have been pushed yet
                 last_source_commit = pr.get("lastMergeSourceCommit") or {}
                 last_commit_date = (last_source_commit.get("author") or {}).get("date") or created_at
                 stall_min = _age_minutes(last_commit_date)
                 is_owned = _is_owned(pr)
                 is_reviewer = _is_reviewer(pr)
-                # Use commit ID as change-tracking key for thread polling
                 last_updated_commit = last_source_commit.get("commitId", "")
                 pr_url = _pr_url(project, repo["name"], pr_id)
 
-                # PR is approved when at least one reviewer voted ≥ 5 (approved with suggestions or better)
                 is_approved = any(r.get("vote", 0) >= 5 for r in pr.get("reviewers", []))
 
                 # Detect new PR
@@ -355,11 +378,11 @@ def _poll() -> dict:
                         _notify(
                             f"New PR: {pr['title'][:60]}",
                             f"{repo['name']} → {_strip_branch(pr.get('targetRefName', ''))} | {branch}",
+                            icon="mail-message-new",
+                            sound="message",
                         )
 
-                # Overdue = no approval AND stalled (no activity) for > threshold
-                # This covers both "waiting for approval" and "waiting for author to
-                # respond to a comment/mention with a new commit"
+                # Overdue = no approval AND stalled > threshold
                 is_overdue = stall_min >= overdue_minutes and not is_approved
                 if is_overdue and pr_id not in _overdue_notified:
                     _overdue_notified.add(pr_id)
@@ -368,12 +391,13 @@ def _poll() -> dict:
                         f"PR stalled {h}h {m}m without activity",
                         f"{pr['title'][:60]}\n{repo['name']}",
                         pr_url,
+                        icon="dialog-warning",
+                        sound="alert",
                     )
                 elif not is_overdue:
-                    # Reset notification flag if PR becomes active again
                     _overdue_notified.discard(pr_id)
 
-                # Check threads for comments/mentions (only when PR updated or first time)
+                # Check threads for comments/mentions
                 has_unread_comments = False
                 has_mentions = False
                 prev_updated = _pr_last_updated.get(pr_id)
@@ -399,21 +423,47 @@ def _poll() -> dict:
 
                             if _has_mention(content) and not is_mine:
                                 has_mentions = True
+                                feed_item = {
+                                    "prId": pr_id,
+                                    "prTitle": pr.get("title", ""),
+                                    "repo": repo["name"],
+                                    "project": project,
+                                    "author": author.get("displayName", "Someone"),
+                                    "excerpt": content[:120],
+                                    "url": pr_url,
+                                }
+                                if feed_item not in mention_items:
+                                    mention_items.append(feed_item)
                                 if notify_mention and key not in _mention_notified:
                                     _mention_notified.add(key)
                                     _notify_critical_with_action(
-                                        f"You were mentioned in: {pr['title'][:50]}",
+                                        f"Mentioned in: {pr['title'][:50]}",
                                         f"{author.get('displayName', 'Someone')} in {repo['name']}",
                                         pr_url,
+                                        icon="mail-message-new",
+                                        sound="message",
                                     )
 
                             if is_owned and not is_mine:
                                 has_unread_comments = True
+                                feed_item = {
+                                    "prId": pr_id,
+                                    "prTitle": pr.get("title", ""),
+                                    "repo": repo["name"],
+                                    "project": project,
+                                    "author": author.get("displayName", "Someone"),
+                                    "excerpt": content[:120],
+                                    "url": pr_url,
+                                }
+                                if feed_item not in comment_items:
+                                    comment_items.append(feed_item)
                                 if notify_comment and key not in _comment_notified:
                                     _comment_notified.add(key)
                                     _notify(
-                                        f"New comment on your PR",
-                                        f"{author.get('displayName', 'Someone')}: {content[:80]}\n{pr['title'][:50]}",
+                                        f"Comment on your PR",
+                                        f"{author.get('displayName', 'Someone')}: {content[:80]}",
+                                        icon="mail-message-new",
+                                        sound="message",
                                     )
                 else:
                     for prev in result_prs:
@@ -461,6 +511,8 @@ def _poll() -> dict:
         "prs": result_prs,
         "overdueCount": overdue_count,
         "mentionCount": mention_count,
+        "commentItems": comment_items[-20:],
+        "mentionItems": mention_items[-20:],
     }
 
 
@@ -489,6 +541,8 @@ def _write_error(msg: str):
         "prs": [],
         "overdueCount": 0,
         "mentionCount": 0,
+        "commentItems": [],
+        "mentionItems": [],
     })
 
 

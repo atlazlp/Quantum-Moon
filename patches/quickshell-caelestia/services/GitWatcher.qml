@@ -14,6 +14,8 @@ Singleton {
     // Public state (read by UI)
     // -----------------------------------------------------------------------
     property var prs: []
+    property var commentItems: []
+    property var mentionItems: []
     property int overdueCount: 0
     property int mentionCount: 0
     property bool loading: false
@@ -86,6 +88,8 @@ Singleton {
         try {
             const s = JSON.parse(text);
             root.prs = s.prs ?? [];
+            root.commentItems = s.commentItems ?? [];
+            root.mentionItems = s.mentionItems ?? [];
             root.overdueCount = s.overdueCount ?? 0;
             root.mentionCount = s.mentionCount ?? 0;
             root.lastError = s.error ?? "";
@@ -98,9 +102,6 @@ Singleton {
 
     // -----------------------------------------------------------------------
     // Daemon process (long-running, one instance)
-    // Declarative binding mirrors the nmcli monitor pattern in BarVpn.qml:
-    // Quickshell starts the process when running becomes true and kills it
-    // when it becomes false.
     // -----------------------------------------------------------------------
     readonly property bool _daemonShouldRun: active && configured
 
@@ -128,7 +129,7 @@ Singleton {
     }
 
     // -----------------------------------------------------------------------
-    // Manual refresh — send SIGHUP to the running daemon so it polls immediately
+    // Manual refresh — send SIGHUP to daemon
     // -----------------------------------------------------------------------
     function refresh(): void {
         loading = true;
@@ -141,11 +142,7 @@ Singleton {
         command: ["bash", "-c",
             "PID=$(cat " + root._pidPath + " 2>/dev/null) && [ -n \"$PID\" ] && kill -HUP \"$PID\""
         ]
-        onExited: {
-            // State file will be updated by daemon; loading cleared when stateFile triggers
-            // Add fallback in case daemon is not running
-            loadingFallback.restart();
-        }
+        onExited: loadingFallback.restart()
     }
 
     Timer {
@@ -153,5 +150,38 @@ Singleton {
         interval: 8000
         repeat: false
         onTriggered: root.loading = false
+    }
+
+    // -----------------------------------------------------------------------
+    // Apply config from the settings modal.
+    // Lives in the singleton (always alive) so close() in the modal can be
+    // called immediately — no async dependency that would leave the overlay stuck.
+    // -----------------------------------------------------------------------
+    function applyConfig(jsonText: string): void {
+        applyWriteProc.pendingJson = jsonText;
+        applyWriteProc.running = true;
+    }
+
+    Process {
+        id: applyWriteProc
+
+        property string pendingJson: ""
+
+        // Pass JSON as a direct argv element — no shell quoting issues
+        command: [
+            "python3", "-c",
+            "import sys, os; open(sys.argv[1],'w').write(sys.argv[2]); os.chmod(sys.argv[1], 0o600)",
+            root._configPath,
+            applyWriteProc.pendingJson
+        ]
+        onExited: applySighupProc.running = true
+    }
+
+    Process {
+        id: applySighupProc
+
+        command: ["bash", "-c",
+            "PID=$(cat " + root._pidPath + " 2>/dev/null) && [ -n \"$PID\" ] && kill -HUP \"$PID\""
+        ]
     }
 }
