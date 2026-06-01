@@ -227,7 +227,6 @@ def _load_muted() -> tuple[set, set]:
 
 _SOUND_PATHS = {
     "message": "/usr/share/sounds/freedesktop/stereo/message.oga",
-    "alert":   "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga",
 }
 
 # Icon paths — prefer Papirus-Dark (active theme) with fallback to Adwaita symbolic
@@ -481,7 +480,7 @@ def _poll() -> dict:
                             f"{pr['title'][:60]}\n{repo['name']}",
                             pr_url,
                             icon="dialog-warning",
-                            sound="alert",
+                            sound="message",
                         )
                 elif not is_overdue:
                     _overdue_notified.discard(pr_id)
