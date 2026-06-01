@@ -617,6 +617,19 @@ def _poll() -> dict:
         _pr_last_updated.pop(gid, None)
         # Keep overdue/mention sets (don't re-notify if PR briefly disappears and comes back)
 
+    # Hard filter: only keep PRs from repos in watchedRepos.
+    # This is a defensive safeguard — result_prs should already only contain
+    # watched repos, but this prevents stale/unexpected data from leaking through.
+    watched_set = set(get_cfg("watchedRepos", []))
+    if watched_set:
+        result_prs = [
+            pr for pr in result_prs
+            if f"{pr.get('project','')}/{pr.get('repo','')}" in watched_set
+            or pr.get("repo", "") in watched_set
+        ]
+        overdue_count = sum(1 for pr in result_prs if pr.get("isOverdue"))
+        mention_count = sum(1 for pr in result_prs if pr.get("hasMentions"))
+
     return {
         "lastUpdated": _now_iso(),
         "error": None,

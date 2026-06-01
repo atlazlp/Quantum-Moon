@@ -85,8 +85,13 @@ for s in cursor-clean.sh workspace-overview-toggle.sh window-alt-tab-cycle.sh wi
     install -m755 "${CAE}/scripts/${s}" "${DEST_C}/scripts/${s}"
   fi
 done
-# Clear Python bytecode cache for scripts so updated .py files always run fresh
+# Clear Python bytecode cache and restart any running git-watcher daemon so
+# the updated script takes effect immediately (Python never reloads in-process).
 rm -rf "${DEST_C}/scripts/__pycache__"
+if [[ -f "${XDG_STATE_HOME:-${HOME}/.local/state}/caelestia/git-watcher.pid" ]]; then
+  GW_PID=$(cat "${XDG_STATE_HOME:-${HOME}/.local/state}/caelestia/git-watcher.pid" 2>/dev/null)
+  [[ -n "${GW_PID}" ]] && kill "${GW_PID}" 2>/dev/null || true
+fi
 rm -f "${DEST_C}/scripts/window-picker-fuzzel.sh" "${DEST_C}/scripts/qm-launcher-log.sh"
 install -m644 "${CAE}/hypr-user.conf" "${DEST_C}/hypr-user.conf"
 if [[ -x "${CAE}/scripts/gen-hypr-launcher-interrupts.sh" ]]; then
