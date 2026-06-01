@@ -46,6 +46,8 @@ _lock = threading.Lock()
 _stop_event = threading.Event()
 
 # Track state across polls to detect new/changed items
+_repos_refresh_counter: int = 0    # Refresh full repo list every N polls for config UI
+
 _seen_pr_ids: set = set()          # PRs we've already notified about (new PR)
 _pr_first_seen: dict = {}          # pr_id -> datetime when first observed active
 _pr_last_updated: dict = {}        # pr_id -> lastUpdatedDate string from API
@@ -129,7 +131,7 @@ def fetch_repos_for_project(project: str) -> list[dict]:
 
 
 def fetch_all_repos_grouped() -> list[dict]:
-    """Return [{project, repos: [{id, name}]}] for all projects."""
+    """Return [{project, repos: [{id, name}]}] for all projects (config UI use only)."""
     projects = fetch_projects()
     result = []
     for proj in projects:
@@ -139,6 +141,40 @@ def fetch_all_repos_grouped() -> list[dict]:
                      for r in repos if r.get("id") and r.get("name")]
             if valid:
                 result.append({"project": proj, "repos": valid})
+    return result
+
+
+def fetch_watched_repos_grouped() -> list[dict]:
+    """Return [{project, repos}] for ONLY the repos in watchedRepos.
+
+    Much cheaper than fetch_all_repos_grouped() — one API call per watched
+    project instead of fetching all 100+ repos from every project. Called on
+    every poll; the full list is refreshed separately for the config UI.
+    """
+    watched: list = get_cfg("watchedRepos", [])
+    if not watched:
+        return []
+
+    # Build {project: {repo_name, ...}} from watchedRepos list
+    by_project: dict = {}
+    for entry in watched:
+        if "/" in entry:
+            proj, repo_name = entry.split("/", 1)
+        else:
+            proj = ""
+            repo_name = entry
+        by_project.setdefault(proj, set()).add(repo_name)
+
+    result = []
+    for proj, wanted_names in by_project.items():
+        if not proj:
+            continue
+        repos = fetch_repos_for_project(proj)
+        valid = [{"id": r["id"], "name": r["name"]}
+                 for r in repos
+                 if r.get("id") and r.get("name") and r["name"] in wanted_names]
+        if valid:
+            result.append({"project": proj, "repos": valid})
     return result
 
 
@@ -194,6 +230,21 @@ _SOUND_PATHS = {
     "alert":   "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga",
 }
 
+# Icon paths — prefer Papirus-Dark (active theme) with fallback to Adwaita symbolic
+def _resolve_icon(name: str) -> str:
+    """Return full icon file path for notify-send, falling back to icon name."""
+    candidates = [
+        f"/usr/share/icons/Papirus-Dark/24x24/actions/{name}.svg",
+        f"/usr/share/icons/Papirus-Dark/24x24/status/{name}.svg",
+        f"/usr/share/icons/Papirus/24x24/actions/{name}.svg",
+        f"/usr/share/icons/Adwaita/symbolic/actions/{name}-symbolic.svg",
+        f"/usr/share/icons/Adwaita/symbolic/status/{name}-symbolic.svg",
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return name  # fallback to name-based lookup
+
 
 def _play_sound(kind: str = "message") -> None:
     path = _SOUND_PATHS.get(kind, _SOUND_PATHS["message"])
@@ -214,7 +265,7 @@ def _notify(summary: str, body: str, urgency: str = "normal",
         "--app-name", "GitWatcher",
         "--urgency", urgency,
         "--expire-time", str(expire_ms),
-        "--icon", icon,
+        "--icon", _resolve_icon(icon),
         summary,
         body,
     ]
@@ -239,7 +290,7 @@ def _notify_critical_with_action(summary: str, body: str, url: str,
             "--app-name", "GitWatcher",
             "--urgency", "critical",
             "--expire-time", "0",
-            "--icon", icon,
+            "--icon", _resolve_icon(icon),
             "--action", "default:Open PR",
             "--wait",
             summary,
@@ -345,19 +396,28 @@ def _poll() -> dict:
     """
     Perform one poll cycle. Returns the state dict to write.
     """
+    global _repos_refresh_counter
+
     overdue_minutes: int = get_cfg("notifications", {}).get("overdueMinutes", 60)
     notify_new_pr: bool = get_cfg("notifications", {}).get("newPr", True)
     notify_comment: bool = get_cfg("notifications", {}).get("prComment", True)
     notify_mention: bool = get_cfg("notifications", {}).get("prMention", True)
 
-    grouped_repos = fetch_all_repos_grouped()
+    # Only fetch watched repos for PR polling — one API call per watched project
+    # instead of fetching all 100+ repos across every project on each poll.
+    grouped_repos = fetch_watched_repos_grouped()
     if not grouped_repos:
-        return {"lastUpdated": _now_iso(), "error": "Failed to fetch repos", "prs": [],
-                "overdueCount": 0, "mentionCount": 0,
+        return {"lastUpdated": _now_iso(), "error": "No repos configured — select repos in the GitWatcher config",
+                "prs": [], "completedPrs": [], "overdueCount": 0, "mentionCount": 0,
                 "commentItems": [], "mentionItems": []}
 
-    # Write repos list grouped by project for config UI
-    _write_json(REPOS_PATH, grouped_repos)
+    # Refresh the full repo list (all projects, for config UI) every 10 polls
+    _repos_refresh_counter += 1
+    if _repos_refresh_counter >= 10 or not os.path.exists(REPOS_PATH):
+        _repos_refresh_counter = 0
+        full_repos = fetch_all_repos_grouped()
+        if full_repos:
+            _write_json(REPOS_PATH, full_repos)
 
     muted_ids, dismissed_ids = _load_muted()
 
@@ -606,10 +666,11 @@ def _write_error(msg: str):
 # ---------------------------------------------------------------------------
 
 def _on_sighup(signum, frame):
-    """Reload config on SIGHUP."""
-    global _config
+    """Reload config and force repo-list refresh on SIGHUP."""
+    global _config, _repos_refresh_counter
     print("[git-watcher] SIGHUP received — reloading config", file=sys.stderr)
     _config = load_config()
+    _repos_refresh_counter = 10  # force full repo list refresh next poll
 
 
 def _on_sigterm(signum, frame):
