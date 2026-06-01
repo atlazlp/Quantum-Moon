@@ -33,7 +33,7 @@ Item {
             spacing: Tokens.spacing.small
 
             MaterialIcon {
-                text: "fork_right"
+                text: "all_inclusive"
                 fill: 1
                 color: Colours.palette.m3secondary
             }

@@ -225,7 +225,7 @@ StyledRect {
 
                     anchors.centerIn: parent
                     animate: true
-                    text: "fork_right"
+                    text: "all_inclusive"
                     fill: GitWatcher.prs.length > 0 ? 1 : 0
                     color: {
                         if (GitWatcher.overdueCount > 0)

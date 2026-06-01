@@ -102,23 +102,48 @@ def _api_get(url: str) -> dict | list | None:
         return None
 
 
-def _base_url() -> str:
-    org = get_cfg("organizationUrl", "").rstrip("/")
-    project = get_cfg("project", "")
-    return f"{org}/{project}"
+def _org_url() -> str:
+    return get_cfg("organizationUrl", "").rstrip("/")
 
 
-def fetch_repos() -> list[dict]:
-    url = f"{_base_url()}/_apis/git/repositories?api-version=7.1"
+def _project_url(project: str) -> str:
+    return f"{_org_url()}/{project}"
+
+
+def fetch_projects() -> list[str]:
+    """Return list of project names in the organization."""
+    url = f"{_org_url()}/_apis/projects?$top=200&api-version=7.1"
+    data = _api_get(url)
+    if not data:
+        return []
+    return [p["name"] for p in data.get("value", [])]
+
+
+def fetch_repos_for_project(project: str) -> list[dict]:
+    url = f"{_project_url(project)}/_apis/git/repositories?api-version=7.1"
     data = _api_get(url)
     if not data:
         return []
     return data.get("value", [])
 
 
-def fetch_active_prs(repo_id: str) -> list[dict]:
+def fetch_all_repos_grouped() -> list[dict]:
+    """Return [{project, repos: [{id, name}]}] for all projects."""
+    projects = fetch_projects()
+    result = []
+    for proj in projects:
+        repos = fetch_repos_for_project(proj)
+        if repos:
+            result.append({
+                "project": proj,
+                "repos": [{"id": r["id"], "name": r["name"]} for r in repos],
+            })
+    return result
+
+
+def fetch_active_prs(project: str, repo_id: str) -> list[dict]:
     url = (
-        f"{_base_url()}/_apis/git/repositories/{repo_id}/pullrequests"
+        f"{_project_url(project)}/_apis/git/repositories/{repo_id}/pullrequests"
         f"?searchCriteria.status=active&api-version=7.1"
     )
     data = _api_get(url)
@@ -127,9 +152,9 @@ def fetch_active_prs(repo_id: str) -> list[dict]:
     return data.get("value", [])
 
 
-def fetch_pr_threads(repo_id: str, pr_id: int) -> list[dict]:
+def fetch_pr_threads(project: str, repo_id: str, pr_id: int) -> list[dict]:
     url = (
-        f"{_base_url()}/_apis/git/repositories/{repo_id}"
+        f"{_project_url(project)}/_apis/git/repositories/{repo_id}"
         f"/pullrequests/{pr_id}/threads?api-version=7.1"
     )
     data = _api_get(url)
@@ -191,10 +216,15 @@ def _notify_critical_with_action(summary: str, body: str, url: str):
 # PR processing helpers
 # ---------------------------------------------------------------------------
 
-def _pr_url(repo_name: str, pr_id: int) -> str:
-    org = get_cfg("organizationUrl", "").rstrip("/")
-    project = get_cfg("project", "")
-    return f"{org}/{project}/_git/{repo_name}/pullrequest/{pr_id}"
+def _pr_url(project: str, repo_name: str, pr_id: int) -> str:
+    return f"{_org_url()}/{project}/_git/{repo_name}/pullrequest/{pr_id}"
+
+
+def _is_ignored(project: str, repo_name: str) -> bool:
+    ignored: list = get_cfg("ignoredRepos", [])
+    qualified = f"{project}/{repo_name}"
+    # Support both old bare-name format and new Project/repo format
+    return qualified in ignored or repo_name in ignored
 
 
 def _strip_branch(ref: str) -> str:
@@ -269,132 +299,134 @@ def _poll() -> dict:
     """
     Perform one poll cycle. Returns the state dict to write.
     """
-    ignored_repos: list = get_cfg("ignoredRepos", [])
     overdue_minutes: int = get_cfg("notifications", {}).get("overdueMinutes", 60)
     notify_new_pr: bool = get_cfg("notifications", {}).get("newPr", True)
     notify_comment: bool = get_cfg("notifications", {}).get("prComment", True)
     notify_mention: bool = get_cfg("notifications", {}).get("prMention", True)
 
-    repos = fetch_repos()
-    if not repos:
+    grouped_repos = fetch_all_repos_grouped()
+    if not grouped_repos:
         return {"lastUpdated": _now_iso(), "error": "Failed to fetch repos", "prs": [],
                 "overdueCount": 0, "mentionCount": 0}
 
-    # Write repos list for config UI (always fresh)
-    _write_json(REPOS_PATH, [{"id": r["id"], "name": r["name"]} for r in repos])
+    # Write repos list grouped by project for config UI
+    _write_json(REPOS_PATH, grouped_repos)
 
     active_pr_ids: set = set()
     result_prs = []
     overdue_count = 0
     mention_count = 0
 
-    for repo in repos:
-        if repo["name"] in ignored_repos:
-            continue
+    for project_entry in grouped_repos:
+        project = project_entry["project"]
+        for repo in project_entry["repos"]:
+            if _is_ignored(project, repo["name"]):
+                continue
 
-        prs = fetch_active_prs(repo["id"])
-        for pr in prs:
-            pr_id = pr["id"]
-            active_pr_ids.add(pr_id)
+            prs = fetch_active_prs(project, repo["id"])
+            for pr in prs:
+                pr_id = pr["id"]
+                active_pr_ids.add(pr_id)
 
-            created_at = pr.get("creationDate", "")
-            if pr_id not in _pr_first_seen:
-                _pr_first_seen[pr_id] = datetime.now(timezone.utc)
+                created_at = pr.get("creationDate", "")
+                if pr_id not in _pr_first_seen:
+                    _pr_first_seen[pr_id] = datetime.now(timezone.utc)
 
-            age_min = _age_minutes(created_at)
-            is_owned = _is_owned(pr)
-            is_reviewer = _is_reviewer(pr)
-            last_updated = pr.get("lastMergeSourceCommit", {}).get("commitId") or pr.get("lastUpdatedDate", "")
+                age_min = _age_minutes(created_at)
+                is_owned = _is_owned(pr)
+                is_reviewer = _is_reviewer(pr)
+                last_updated = pr.get("lastMergeSourceCommit", {}).get("commitId") or pr.get("lastUpdatedDate", "")
+                pr_url = _pr_url(project, repo["name"], pr_id)
 
-            # Detect new PR
-            if pr_id not in _seen_pr_ids:
-                _seen_pr_ids.add(pr_id)
-                if notify_new_pr:
-                    branch = _strip_branch(pr.get("sourceRefName", ""))
-                    _notify(
-                        f"New PR: {pr['title'][:60]}",
-                        f"{repo['name']} → {_strip_branch(pr.get('targetRefName', ''))} | {branch}",
+                # Detect new PR
+                if pr_id not in _seen_pr_ids:
+                    _seen_pr_ids.add(pr_id)
+                    if notify_new_pr:
+                        branch = _strip_branch(pr.get("sourceRefName", ""))
+                        _notify(
+                            f"New PR: {pr['title'][:60]}",
+                            f"{repo['name']} → {_strip_branch(pr.get('targetRefName', ''))} | {branch}",
+                        )
+
+                # Detect overdue
+                if age_min >= overdue_minutes and pr_id not in _overdue_notified:
+                    _overdue_notified.add(pr_id)
+                    _notify_critical_with_action(
+                        f"PR waiting {int(age_min // 60)}h {int(age_min % 60)}m",
+                        f"{pr['title'][:60]}\n{repo['name']}",
+                        pr_url,
                     )
 
-            # Detect overdue
-            if age_min >= overdue_minutes and pr_id not in _overdue_notified:
-                _overdue_notified.add(pr_id)
-                _notify_critical_with_action(
-                    f"PR waiting {int(age_min // 60)}h {int(age_min % 60)}m",
-                    f"{pr['title'][:60]}\n{repo['name']}",
-                    _pr_url(repo["name"], pr_id),
-                )
+                # Check threads for comments/mentions (only when PR updated or first time)
+                has_unread_comments = False
+                has_mentions = False
+                prev_updated = _pr_last_updated.get(pr_id)
+                threads_changed = prev_updated != last_updated
 
-            # Check threads for comments/mentions (only when PR updated or first time)
-            has_unread_comments = False
-            has_mentions = False
-            prev_updated = _pr_last_updated.get(pr_id)
-            threads_changed = prev_updated != last_updated
-
-            if threads_changed and (is_owned or is_reviewer):
-                _pr_last_updated[pr_id] = last_updated
-                threads = fetch_pr_threads(repo["id"], pr_id)
-                for thread in threads:
-                    if thread.get("isDeleted"):
-                        continue
-                    thread_id = thread.get("id", 0)
-                    for comment in thread.get("comments", []):
-                        if comment.get("commentType") == "system":
+                if threads_changed and (is_owned or is_reviewer):
+                    _pr_last_updated[pr_id] = last_updated
+                    threads = fetch_pr_threads(project, repo["id"], pr_id)
+                    for thread in threads:
+                        if thread.get("isDeleted"):
                             continue
-                        author = comment.get("author", {})
-                        author_unique = (author.get("uniqueName") or "").lower()
-                        author_mail = (author.get("mailAddress") or "").lower()
-                        my = _my_identity()
-                        is_mine = my in (author_unique, author_mail)
-                        content = comment.get("content") or ""
-                        key = f"{pr_id}:{thread_id}"
+                        thread_id = thread.get("id", 0)
+                        for comment in thread.get("comments", []):
+                            if comment.get("commentType") == "system":
+                                continue
+                            author = comment.get("author", {})
+                            author_unique = (author.get("uniqueName") or "").lower()
+                            author_mail = (author.get("mailAddress") or "").lower()
+                            my = _my_identity()
+                            is_mine = my in (author_unique, author_mail)
+                            content = comment.get("content") or ""
+                            key = f"{pr_id}:{thread_id}"
 
-                        if _has_mention(content) and not is_mine:
-                            has_mentions = True
-                            if notify_mention and key not in _mention_notified:
-                                _mention_notified.add(key)
-                                _notify_critical_with_action(
-                                    f"You were mentioned in: {pr['title'][:50]}",
-                                    f"{author.get('displayName', 'Someone')} in {repo['name']}",
-                                    _pr_url(repo["name"], pr_id),
-                                )
+                            if _has_mention(content) and not is_mine:
+                                has_mentions = True
+                                if notify_mention and key not in _mention_notified:
+                                    _mention_notified.add(key)
+                                    _notify_critical_with_action(
+                                        f"You were mentioned in: {pr['title'][:50]}",
+                                        f"{author.get('displayName', 'Someone')} in {repo['name']}",
+                                        pr_url,
+                                    )
 
-                        if is_owned and not is_mine:
-                            has_unread_comments = True
-                            if notify_comment and key not in _comment_notified:
-                                _comment_notified.add(key)
-                                _notify(
-                                    f"New comment on your PR",
-                                    f"{author.get('displayName', 'Someone')}: {content[:80]}\n{pr['title'][:50]}",
-                                )
-            else:
-                # Carry over previous state from last iteration
-                for prev in result_prs:
-                    if prev.get("id") == pr_id:
-                        has_unread_comments = prev.get("hasUnreadComments", False)
-                        has_mentions = prev.get("hasMentions", False)
-                        break
+                            if is_owned and not is_mine:
+                                has_unread_comments = True
+                                if notify_comment and key not in _comment_notified:
+                                    _comment_notified.add(key)
+                                    _notify(
+                                        f"New comment on your PR",
+                                        f"{author.get('displayName', 'Someone')}: {content[:80]}\n{pr['title'][:50]}",
+                                    )
+                else:
+                    for prev in result_prs:
+                        if prev.get("id") == pr_id:
+                            has_unread_comments = prev.get("hasUnreadComments", False)
+                            has_mentions = prev.get("hasMentions", False)
+                            break
 
-            if age_min >= overdue_minutes:
-                overdue_count += 1
-            if has_mentions:
-                mention_count += 1
+                if age_min >= overdue_minutes:
+                    overdue_count += 1
+                if has_mentions:
+                    mention_count += 1
 
-            result_prs.append({
-                "id": pr_id,
-                "title": pr.get("title", ""),
-                "repo": repo["name"],
-                "sourceBranch": _strip_branch(pr.get("sourceRefName", "")),
-                "targetBranch": _strip_branch(pr.get("targetRefName", "")),
-                "status": pr.get("status", "active"),
-                "createdAt": created_at,
-                "url": _pr_url(repo["name"], pr_id),
-                "ageMinutes": int(age_min),
-                "hasUnreadComments": has_unread_comments,
-                "hasMentions": has_mentions,
-                "isOwned": is_owned,
-                "isReviewer": is_reviewer,
-            })
+                result_prs.append({
+                    "id": pr_id,
+                    "title": pr.get("title", ""),
+                    "repo": repo["name"],
+                    "project": project,
+                    "sourceBranch": _strip_branch(pr.get("sourceRefName", "")),
+                    "targetBranch": _strip_branch(pr.get("targetRefName", "")),
+                    "status": pr.get("status", "active"),
+                    "createdAt": created_at,
+                    "url": pr_url,
+                    "ageMinutes": int(age_min),
+                    "hasUnreadComments": has_unread_comments,
+                    "hasMentions": has_mentions,
+                    "isOwned": is_owned,
+                    "isReviewer": is_reviewer,
+                })
 
     # Clean up tracking state for PRs no longer active
     gone = set(_seen_pr_ids) - active_pr_ids

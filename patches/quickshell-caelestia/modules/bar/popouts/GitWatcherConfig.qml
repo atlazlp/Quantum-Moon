@@ -20,11 +20,11 @@ Item {
     readonly property string _pidPath: Quickshell.env("HOME") + "/.local/state/caelestia/git-watcher.pid"
 
     property var _cfg: ({})
-    property var _availableRepos: []
-    property bool _dirty: false
+    // [{project: "...", repos: [{id, name}]}]
+    property var _projectRepos: []
 
-    implicitWidth: 340
-    implicitHeight: mainLayout.implicitHeight + Tokens.padding.large * 2
+    implicitWidth: 360
+    implicitHeight: Math.min(outerScroll.contentHeight + Tokens.padding.large * 2, 560)
 
     // -----------------------------------------------------------------------
     // Load config and repos on open
@@ -42,7 +42,6 @@ Item {
             }
             root._syncFormFromCfg();
         }
-        onLoadFailed: root._cfg = {}
     }
 
     FileView {
@@ -52,9 +51,9 @@ Item {
         printErrors: false
         onLoaded: {
             try {
-                root._availableRepos = JSON.parse(text());
+                root._projectRepos = JSON.parse(text());
             } catch (e) {
-                root._availableRepos = [];
+                root._projectRepos = [];
             }
         }
     }
@@ -65,7 +64,7 @@ Item {
     }
 
     // -----------------------------------------------------------------------
-    // Form state (local copies, written on Apply)
+    // Form state
     // -----------------------------------------------------------------------
     property string _pat: ""
     property string _orgUrl: ""
@@ -78,7 +77,8 @@ Item {
     property bool _notifyMention: true
     property string _overdueColor: "#ff9500"
     property string _mentionColor: "#e53935"
-    property var _ignoredRepos: []
+    // Set of "Project/repoName" strings that are IGNORED (excluded from watching)
+    property var _ignoredSet: ({})
 
     function _syncFormFromCfg(): void {
         _pat = _cfg.pat ?? "";
@@ -92,7 +92,29 @@ Item {
         _notifyMention = _cfg.notifications?.prMention ?? true;
         _overdueColor = _cfg.colors?.overdue ?? "#ff9500";
         _mentionColor = _cfg.colors?.mention ?? "#e53935";
-        _ignoredRepos = _cfg.ignoredRepos ?? [];
+        // Build ignored set from array for fast lookup
+        const ignored = _cfg.ignoredRepos ?? [];
+        const set = {};
+        for (const k of ignored) set[k] = true;
+        _ignoredSet = set;
+    }
+
+    function _isRepoIgnored(project: string, repoName: string): bool {
+        const key = `${project}/${repoName}`;
+        return !!(_ignoredSet[key] || _ignoredSet[repoName]);
+    }
+
+    function _setRepoIgnored(project: string, repoName: string, ignored: bool): void {
+        const key = `${project}/${repoName}`;
+        const copy = Object.assign({}, _ignoredSet);
+        // Remove both legacy bare-name and qualified forms
+        delete copy[repoName];
+        if (ignored) {
+            copy[key] = true;
+        } else {
+            delete copy[key];
+        }
+        _ignoredSet = copy;
     }
 
     function _buildConfig(): string {
@@ -103,11 +125,8 @@ Item {
             project: _project,
             myIdentity: _identity,
             pollIntervalSeconds: _pollInterval,
-            ignoredRepos: _ignoredRepos,
-            colors: {
-                overdue: _overdueColor,
-                mention: _mentionColor,
-            },
+            ignoredRepos: Object.keys(_ignoredSet),
+            colors: { overdue: _overdueColor, mention: _mentionColor },
             notifications: {
                 newPr: _notifyNewPr,
                 overdueMinutes: _overdueMinutes,
@@ -119,7 +138,7 @@ Item {
     }
 
     // -----------------------------------------------------------------------
-    // Apply — write config and SIGHUP the daemon
+    // Apply
     // -----------------------------------------------------------------------
     Process {
         id: writeProc
@@ -136,7 +155,6 @@ Item {
 
     function _apply(): void {
         const content = root._buildConfig();
-        // Write via a bash heredoc so we don't need a write API
         writeProc.command = [
             "bash", "-c",
             `cat > ${root._configPath} << 'CFGEOF'\n${content}\nCFGEOF\nchmod 600 ${root._configPath}`
@@ -148,15 +166,17 @@ Item {
     // UI
     // -----------------------------------------------------------------------
     ScrollView {
+        id: outerScroll
+
         anchors.fill: parent
-        contentWidth: parent.width
+        anchors.margins: Tokens.padding.large
+        contentWidth: availableWidth
+        clip: true
 
         ColumnLayout {
             id: mainLayout
 
-            width: root.width - Tokens.padding.large * 2
-            x: Tokens.padding.large
-            y: Tokens.padding.large
+            width: outerScroll.availableWidth
             spacing: Tokens.spacing.normal
 
             // Header
@@ -172,18 +192,22 @@ Item {
                     font.weight: 600
                 }
 
-                StateLayer {
-                    implicitWidth: closeIcon.implicitWidth + Tokens.padding.small * 2
-                    implicitHeight: closeIcon.implicitHeight + Tokens.padding.small * 2
-                    radius: Tokens.rounding.full
-                    color: Colours.palette.m3onSurface
-                    onClicked: root.close()
+                Item {
+                    implicitWidth: closeBtn.implicitWidth + Tokens.padding.small * 2
+                    implicitHeight: closeBtn.implicitHeight + Tokens.padding.small * 2
 
                     MaterialIcon {
-                        id: closeIcon
+                        id: closeBtn
                         anchors.centerIn: parent
                         text: "close"
                         color: Colours.palette.m3secondary
+                    }
+
+                    StateLayer {
+                        anchors.fill: parent
+                        radius: Tokens.rounding.full
+                        color: Colours.palette.m3onSurface
+                        onClicked: root.close()
                     }
                 }
             }
@@ -201,31 +225,31 @@ Item {
 
             LabeledField {
                 label: qsTr("Organization URL")
-                hint: qsTr("e.g. https://dev.azure.com/myorg")
+                hint: qsTr("https://dev.azure.com/myorg")
                 value: root._orgUrl
                 onEdited: val => { root._orgUrl = val }
             }
 
             LabeledField {
-                label: qsTr("Project")
-                hint: qsTr("e.g. Cambio")
+                label: qsTr("Default project")
+                hint: qsTr("Used for PR URL building (e.g. Cambio)")
                 value: root._project
                 onEdited: val => { root._project = val }
             }
 
             LabeledField {
                 label: qsTr("My identity (email / UPN)")
-                hint: qsTr("Used to detect mentions and owned PRs")
+                hint: qsTr("For mention and owned PR detection")
                 value: root._identity
                 onEdited: val => { root._identity = val }
             }
 
-            // --- Poll interval ---
+            // --- Polling ---
             StyledText { text: qsTr("Polling"); font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
             LabeledField {
                 label: qsTr("Poll interval (seconds)")
-                hint: qsTr("How often to check for new PRs (minimum 10)")
+                hint: qsTr("Minimum 10")
                 isNumber: true
                 value: root._pollInterval.toString()
                 onEdited: val => {
@@ -256,8 +280,7 @@ Item {
             }
 
             LabeledField {
-                label: qsTr("Overdue threshold (minutes)")
-                hint: qsTr("PRs older than this trigger a persistent notification")
+                label: qsTr("Overdue threshold (min)")
                 isNumber: true
                 value: root._overdueMinutes.toString()
                 onEdited: val => {
@@ -271,19 +294,19 @@ Item {
 
             LabeledField {
                 label: qsTr("Overdue color")
-                hint: qsTr("CSS hex color, e.g. #ff9500")
+                hint: "#ff9500"
                 value: root._overdueColor
                 onEdited: val => root._overdueColor = val
             }
 
             LabeledField {
                 label: qsTr("Mention color")
-                hint: qsTr("CSS hex color, e.g. #e53935")
+                hint: "#e53935"
                 value: root._mentionColor
                 onEdited: val => root._mentionColor = val
             }
 
-            // --- Repos ---
+            // --- Repositories by project ---
             StyledText {
                 text: qsTr("Repositories")
                 font.weight: 500
@@ -291,8 +314,8 @@ Item {
             }
 
             StyledText {
-                visible: root._availableRepos.length === 0
-                text: qsTr("No repos loaded yet. Save credentials and wait for the first poll.")
+                visible: root._projectRepos.length === 0
+                text: qsTr("No repos loaded. Save credentials first, then wait for the first poll.")
                 font.pixelSize: Tokens.font.sizes.small
                 color: Colours.palette.m3secondary
                 wrapMode: Text.WordWrap
@@ -300,24 +323,21 @@ Item {
             }
 
             Repeater {
-                model: root._availableRepos
+                id: projectRepeater
+                model: root._projectRepos
 
-                SwitchRow {
-                    id: repoRow
+                ProjectSection {
+                    id: projSection
 
                     required property var modelData
+                    required property int index
 
-                    label: modelData.name
-                    checked: !root._ignoredRepos.includes(modelData.name)
-                    onToggled: checked => {
-                        const list = [...root._ignoredRepos];
-                        const idx = list.indexOf(modelData.name);
-                        if (!checked && idx === -1)
-                            list.push(modelData.name);
-                        else if (checked && idx !== -1)
-                            list.splice(idx, 1);
-                        root._ignoredRepos = list;
-                    }
+                    Layout.fillWidth: true
+                    projectName: modelData.project
+                    repos: modelData.repos
+                    ignoredSet: root._ignoredSet
+
+                    onRepoToggled: (proj, repo, ignored) => root._setRepoIgnored(proj, repo, ignored)
                 }
             }
 
@@ -351,7 +371,185 @@ Item {
     }
 
     // -----------------------------------------------------------------------
-    // Internal labeled text field component
+    // Project collapsible section with per-repo checkboxes
+    // -----------------------------------------------------------------------
+    component ProjectSection: ColumnLayout {
+        id: ps
+
+        required property string projectName
+        required property var repos       // [{id, name}]
+        required property var ignoredSet  // plain object used as a set
+
+        signal repoToggled(string proj, string repo, bool ignored)
+
+        property bool expanded: false
+
+        spacing: 0
+
+        // Computed: how many repos are enabled
+        readonly property int enabledCount: {
+            let n = 0;
+            for (const r of repos) {
+                const key = `${projectName}/${r.name}`;
+                if (!ignoredSet[key] && !ignoredSet[r.name]) n++;
+            }
+            return n;
+        }
+        // tristate: 0=none, 1=partial, 2=all
+        readonly property int checkState: {
+            if (enabledCount === 0) return 0;
+            if (enabledCount === repos.length) return 2;
+            return 1;
+        }
+
+        // Header row
+        Item {
+            Layout.fillWidth: true
+            implicitHeight: 44
+
+            // Background on hover
+            StyledRect {
+                anchors.fill: parent
+                radius: Tokens.rounding.small
+                color: Colours.tPalette.m3surfaceVariant
+                opacity: 0.6
+            }
+
+            RowLayout {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Tokens.padding.small
+                anchors.rightMargin: Tokens.padding.small
+                spacing: Tokens.spacing.small
+
+                // Tristate checkbox icon
+                MaterialIcon {
+                    text: ps.checkState === 2 ? "check_box"
+                        : ps.checkState === 1 ? "indeterminate_check_box"
+                        : "check_box_outline_blank"
+                    fill: ps.checkState > 0 ? 1 : 0
+                    color: ps.checkState === 2 ? Colours.palette.m3primary
+                         : ps.checkState === 1 ? Colours.palette.m3secondary
+                         : Colours.palette.m3outline
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            // toggle all: if any are enabled, disable all; if none, enable all
+                            const disableAll = ps.enabledCount > 0;
+                            for (const r of ps.repos)
+                                ps.repoToggled(ps.projectName, r.name, disableAll);
+                        }
+                    }
+                }
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: ps.projectName
+                    font.weight: 500
+                    elide: Text.ElideRight
+                }
+
+                StyledText {
+                    text: `${ps.enabledCount}/${ps.repos.length}`
+                    font.pixelSize: Tokens.font.sizes.small
+                    color: Colours.palette.m3secondary
+                }
+
+                MaterialIcon {
+                    text: "expand_more"
+                    color: Colours.palette.m3secondary
+                    rotation: ps.expanded ? 180 : 0
+
+                    Behavior on rotation { Anim { type: Anim.StandardSmall } }
+                }
+
+                StateLayer {
+                    anchors.fill: parent
+                    radius: Tokens.rounding.small
+                    color: Colours.palette.m3onSurface
+                    onClicked: ps.expanded = !ps.expanded
+                }
+            }
+        }
+
+        // Expandable repo list (scrollable when tall)
+        Item {
+            id: repoWrapper
+
+            Layout.fillWidth: true
+            implicitHeight: ps.expanded ? Math.min(repoCol.implicitHeight, 200) : 0
+            clip: true
+
+            Behavior on implicitHeight { Anim {} }
+
+            ScrollView {
+                anchors.fill: parent
+                contentWidth: availableWidth
+                clip: true
+
+                ColumnLayout {
+                    id: repoCol
+
+                    width: repoWrapper.width
+                    spacing: 2
+
+                    Repeater {
+                        model: ps.repos
+
+                        Item {
+                            id: repoRow
+
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            width: parent.width
+                            implicitHeight: 36
+
+                            readonly property bool enabled_: {
+                                const key = `${ps.projectName}/${modelData.name}`;
+                                return !(ps.ignoredSet[key] || ps.ignoredSet[modelData.name]);
+                            }
+
+                            RowLayout {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: Tokens.padding.normal * 2
+                                anchors.rightMargin: Tokens.padding.small
+                                spacing: Tokens.spacing.small
+
+                                MaterialIcon {
+                                    text: repoRow.enabled_ ? "check_box" : "check_box_outline_blank"
+                                    fill: repoRow.enabled_ ? 1 : 0
+                                    color: repoRow.enabled_ ? Colours.palette.m3primary : Colours.palette.m3outline
+                                    font.pixelSize: Tokens.font.sizes.normal
+                                }
+
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: repoRow.modelData.name
+                                    font.pixelSize: Tokens.font.sizes.small
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            StateLayer {
+                                anchors.fill: parent
+                                radius: Tokens.rounding.small
+                                color: Colours.palette.m3onSurface
+                                onClicked: ps.repoToggled(ps.projectName, repoRow.modelData.name, repoRow.enabled_)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Labeled text field inline component
     // -----------------------------------------------------------------------
     component LabeledField: ColumnLayout {
         id: lf
