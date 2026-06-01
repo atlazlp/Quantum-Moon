@@ -538,7 +538,7 @@ Item {
                     }
 
                     StyledText {
-                        text: archCard.modelData.repo + " · " + _fmtAge(archCard.modelData.ageMinutes)
+                        text: archCard.modelData.repo
                         font.pixelSize: Tokens.font.sizes.small - 1
                         color: Colours.palette.m3secondary
                         opacity: 0.7
