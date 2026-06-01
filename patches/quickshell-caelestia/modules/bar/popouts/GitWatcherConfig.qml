@@ -18,26 +18,19 @@ Item {
     readonly property string _reposPath: Quickshell.env("HOME") + "/.local/state/caelestia/git-watcher-repos.json"
 
     property var _cfg: ({})
-    // [{project: "...", repos: [{id, name}]}]
     property var _projectRepos: []
 
     implicitWidth: 480
     implicitHeight: Math.min(formScroll.contentHeight + Tokens.padding.large * 2 + actionBar.implicitHeight + Tokens.spacing.normal, 580)
 
-    // -----------------------------------------------------------------------
-    // Load config and repos on open
-    // -----------------------------------------------------------------------
     FileView {
         id: cfgFile
         path: GitWatcher._configPath
         watchChanges: false
         printErrors: false
         onLoaded: {
-            try {
-                root._cfg = JSON.parse(text());
-            } catch (e) {
-                root._cfg = {};
-            }
+            try { root._cfg = JSON.parse(text()); }
+            catch (e) { root._cfg = {}; }
             root._syncFormFromCfg();
         }
     }
@@ -48,18 +41,12 @@ Item {
         watchChanges: false
         printErrors: false
         onLoaded: {
-            try {
-                root._projectRepos = JSON.parse(text());
-            } catch (e) {
-                root._projectRepos = [];
-            }
+            try { root._projectRepos = JSON.parse(text()); }
+            catch (e) { root._projectRepos = []; }
         }
     }
 
-    Component.onCompleted: {
-        cfgFile.reload();
-        reposFile.reload();
-    }
+    Component.onCompleted: { cfgFile.reload(); reposFile.reload(); }
 
     // -----------------------------------------------------------------------
     // Form state
@@ -75,36 +62,21 @@ Item {
     property bool   _notifyMention: true
     property string _overdueColor: "#ff9500"
     property string _mentionColor: "#e53935"
-    property string _language: "en"       // "en" or "pt"
-    // "Project/repoName" → true   (allowlist of repos to watch)
     property var    _watchedSet: ({})
 
-    // Shorthand — config modal uses the same translation map as the popout
-    readonly property var t: GitWatcher.t
-
     function _syncFormFromCfg(): void {
-        _pat          = _cfg.pat ?? "";
-        _orgUrl       = _cfg.organizationUrl ?? "";
-        _identity     = _cfg.myIdentity ?? "";
-        _pollInterval = _cfg.pollIntervalSeconds ?? 60;
+        _pat            = _cfg.pat ?? "";
+        _orgUrl         = _cfg.organizationUrl ?? "";
+        _identity       = _cfg.myIdentity ?? "";
+        _pollInterval   = _cfg.pollIntervalSeconds ?? 60;
         _overdueMinutes = _cfg.notifications?.overdueMinutes ?? 60;
         _notifyNewPr    = _cfg.notifications?.newPr ?? true;
         _notifyComment  = _cfg.notifications?.prComment ?? true;
         _notifyMention  = _cfg.notifications?.prMention ?? true;
         _overdueColor   = _cfg.colors?.overdue ?? "#ff9500";
         _mentionColor   = _cfg.colors?.mention ?? "#e53935";
-        _language       = _cfg.language ?? "en";
-
-        // Build watched set from new watchedRepos field.
-        // If config still has old ignoredRepos, migrate: treat everything NOT in
-        // ignoredRepos as watched (if ignoredRepos is empty, default-off = empty).
         const set = {};
-        if (_cfg.watchedRepos) {
-            for (const k of _cfg.watchedRepos) set[k] = true;
-        }
-        // Old ignoredRepos with entries → treat non-ignored repos as watched
-        // (only applies when migrating from the denylist format)
-        // If both absent or ignoredRepos empty → default off, start empty.
+        for (const k of (_cfg.watchedRepos ?? [])) set[k] = true;
         _watchedSet = set;
     }
 
@@ -116,7 +88,7 @@ Item {
     function _setRepoWatched(project: string, repo: string, watch: bool): void {
         const key = `${project}/${repo}`;
         const copy = Object.assign({}, _watchedSet);
-        delete copy[repo]; // remove legacy bare-name if present
+        delete copy[repo];
         if (watch) copy[key] = true; else delete copy[key];
         _watchedSet = copy;
     }
@@ -127,7 +99,6 @@ Item {
             pat: _pat,
             organizationUrl: _orgUrl,
             myIdentity: _identity,
-            language: _language,
             pollIntervalSeconds: _pollInterval,
             watchedRepos: Object.keys(_watchedSet),
             colors: { overdue: _overdueColor, mention: _mentionColor },
@@ -140,17 +111,13 @@ Item {
         }, null, 2);
     }
 
-    // -----------------------------------------------------------------------
-    // Apply — delegates to GitWatcher service (always-alive singleton),
-    // then closes immediately so the overlay doesn't get stuck.
-    // -----------------------------------------------------------------------
     function _apply(): void {
         GitWatcher.applyConfig(root._buildConfig());
         root.close();
     }
 
     // -----------------------------------------------------------------------
-    // Layout: scrollable form + fixed action bar
+    // Layout
     // -----------------------------------------------------------------------
     ScrollView {
         id: formScroll
@@ -166,7 +133,6 @@ Item {
 
         ColumnLayout {
             id: formLayout
-
             width: formScroll.availableWidth
             spacing: Tokens.spacing.normal
 
@@ -177,11 +143,7 @@ Item {
 
                 MaterialIcon { text: "settings"; fill: 1; color: Colours.palette.m3secondary }
 
-                StyledText {
-                    Layout.fillWidth: true
-                    text: t.configTitle
-                    font.weight: 600
-                }
+                StyledText { Layout.fillWidth: true; text: "GitWatcher Config"; font.weight: 600 }
 
                 Item {
                     implicitWidth: 32; implicitHeight: 32
@@ -190,61 +152,14 @@ Item {
                 }
             }
 
-            // ── Language ──
-            StyledText { text: t.sectionLanguage; font.weight: 500 }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Tokens.spacing.small
-
-                Repeater {
-                    model: [
-                        { lang: "en", label: t.langEnglish },
-                        { lang: "pt", label: t.langPortuguese },
-                    ]
-
-                    Item {
-                        id: langBtn
-                        required property var modelData
-                        required property int index
-
-                        Layout.fillWidth: true
-                        implicitHeight: langLabel.implicitHeight + Tokens.padding.normal
-
-                        readonly property bool chosen: root._language.startsWith(modelData.lang)
-
-                        StyledRect {
-                            anchors.fill: parent; radius: Tokens.rounding.small
-                            color: langBtn.chosen ? Colours.palette.m3primary : Colours.tPalette.m3surfaceVariant
-                            opacity: langBtn.chosen ? 1 : 0.6
-                        }
-
-                        StyledText {
-                            id: langLabel
-                            anchors.centerIn: parent
-                            text: langBtn.modelData.label
-                            font.pixelSize: Tokens.font.sizes.small
-                            font.weight: langBtn.chosen ? 600 : 400
-                            color: langBtn.chosen ? Colours.palette.m3onPrimary : Colours.palette.m3onSurface
-                        }
-
-                        StateLayer {
-                            anchors.fill: parent; radius: Tokens.rounding.small; color: Colours.palette.m3onSurface
-                            onClicked: root._language = langBtn.modelData.lang
-                        }
-                    }
-                }
-            }
-
             // ── Credentials ──
-            StyledText { text: t.sectionCredentials; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+            StyledText { text: "Credentials"; font.weight: 500 }
 
-            // PAT with visibility toggle
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
 
-                StyledText { text: t.fieldPat; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
+                StyledText { text: "Personal Access Token"; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
 
                 StyledRect {
                     Layout.fillWidth: true
@@ -263,7 +178,7 @@ Item {
                             Layout.fillWidth: true
                             text: root._pat
                             echoMode: root._patVisible ? TextField.Normal : TextField.Password
-                            placeholderText: t.fieldPatHint
+                            placeholderText: "Required scopes: Code (Read), Graph (Read)"
                             onTextEdited: root._pat = text
                         }
 
@@ -276,31 +191,31 @@ Item {
                 }
             }
 
-            LabeledField { label: t.fieldOrgUrl; hint: t.fieldOrgUrlHint; value: root._orgUrl; onEdited: val => root._orgUrl = val }
-            LabeledField { label: t.fieldIdentity; hint: t.fieldIdentityHint; value: root._identity; onEdited: val => root._identity = val }
+            LabeledField { label: "Organization URL"; hint: "https://dev.azure.com/myorg"; value: root._orgUrl; onEdited: val => root._orgUrl = val }
+            LabeledField { label: "My identity (email / UPN)"; hint: "For mention and owned PR detection"; value: root._identity; onEdited: val => root._identity = val }
 
             // ── Polling ──
-            StyledText { text: t.sectionPolling; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
-            LabeledField { label: t.fieldInterval; hint: t.fieldIntervalHint; isNumber: true; value: root._pollInterval.toString(); onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._pollInterval = Math.max(10, n); } }
+            StyledText { text: "Polling"; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+            LabeledField { label: "Poll interval (seconds)"; hint: "Minimum 10"; isNumber: true; value: root._pollInterval.toString(); onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._pollInterval = Math.max(10, n); } }
 
             // ── Notifications ──
-            StyledText { text: t.sectionNotifs; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
-            SwitchRow { label: t.notifNewPr;   checked: root._notifyNewPr;    onToggled: c => root._notifyNewPr = c }
-            SwitchRow { label: t.notifComment; checked: root._notifyComment;  onToggled: c => root._notifyComment = c }
-            SwitchRow { label: t.notifMention; checked: root._notifyMention;  onToggled: c => root._notifyMention = c }
-            LabeledField { label: t.fieldOverdueMin; hint: t.fieldOverdueHint; isNumber: true; value: root._overdueMinutes.toString(); onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._overdueMinutes = Math.max(1, n); } }
+            StyledText { text: "Notifications"; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+            SwitchRow { label: "New PR";            checked: root._notifyNewPr;    onToggled: c => root._notifyNewPr = c }
+            SwitchRow { label: "Comment on my PR";  checked: root._notifyComment;  onToggled: c => root._notifyComment = c }
+            SwitchRow { label: "Mention (@me)";     checked: root._notifyMention;  onToggled: c => root._notifyMention = c }
+            LabeledField { label: "Overdue threshold (min)"; hint: "Stalled + unapproved after this long"; isNumber: true; value: root._overdueMinutes.toString(); onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._overdueMinutes = Math.max(1, n); } }
 
             // ── Colors ──
-            StyledText { text: t.sectionColors; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
-            LabeledField { label: t.fieldOverdueColor; hint: "#ff9500"; value: root._overdueColor; onEdited: val => root._overdueColor = val }
-            LabeledField { label: t.fieldMentionColor; hint: "#e53935"; value: root._mentionColor; onEdited: val => root._mentionColor = val }
+            StyledText { text: "Colors"; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+            LabeledField { label: "Overdue color"; hint: "#ff9500"; value: root._overdueColor; onEdited: val => root._overdueColor = val }
+            LabeledField { label: "Mention color"; hint: "#e53935"; value: root._mentionColor; onEdited: val => root._mentionColor = val }
 
             // ── Repositories ──
-            StyledText { text: t.sectionRepos; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+            StyledText { text: "Repositories"; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
             StyledText {
                 visible: root._projectRepos.length === 0
-                text: t.reposEmptyHint
+                text: "No repos loaded yet — save credentials first and wait for a poll."
                 font.pixelSize: Tokens.font.sizes.small
                 color: Colours.palette.m3secondary
                 wrapMode: Text.WordWrap
@@ -339,7 +254,7 @@ Item {
 
         IconTextButton {
             Layout.fillWidth: true
-            text: t.cancel
+            text: "Cancel"
             icon: "close"
             inactiveColour: Colours.palette.m3surfaceVariant
             inactiveOnColour: Colours.palette.m3onSurfaceVariant
@@ -349,7 +264,7 @@ Item {
 
         IconTextButton {
             Layout.fillWidth: true
-            text: t.apply
+            text: "Apply"
             icon: "check"
             inactiveColour: Colours.palette.m3primaryContainer
             inactiveOnColour: Colours.palette.m3onPrimaryContainer
@@ -359,7 +274,7 @@ Item {
     }
 
     // -----------------------------------------------------------------------
-    // Project section component
+    // Project section
     // -----------------------------------------------------------------------
     component ProjectSection: ColumnLayout {
         id: ps
@@ -383,7 +298,6 @@ Item {
             }
             return n;
         }
-        // 0=none 1=partial 2=all
         readonly property int checkState: {
             if (_repos.length === 0) return 0;
             if (watchedCount === 0) return 0;
@@ -394,14 +308,12 @@ Item {
         spacing: 0
         clip: false
 
-        // Header
         Item {
             Layout.fillWidth: true
             implicitHeight: 44
 
             StyledRect { anchors.fill: parent; radius: Tokens.rounding.small; color: Colours.tPalette.m3surfaceVariant; opacity: 0.5 }
 
-            // Checkbox (z:2 — separate from expand StateLayer)
             Item {
                 id: checkboxHit
                 anchors.left: parent.left
@@ -431,7 +343,6 @@ Item {
                 }
             }
 
-            // Expand trigger
             Item {
                 anchors.left: checkboxHit.right
                 anchors.right: parent.right
@@ -475,7 +386,6 @@ Item {
             }
         }
 
-        // Repo list
         Item {
             id: repoWrapper
             Layout.fillWidth: true

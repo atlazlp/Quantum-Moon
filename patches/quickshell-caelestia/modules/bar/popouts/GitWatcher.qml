@@ -37,7 +37,7 @@ Item {
 
             StyledText {
                 Layout.fillWidth: true
-                text: GitWatcher.t.widgetTitle
+                text: "Azure DevOps"
                 font.weight: 600
             }
 
@@ -86,8 +86,8 @@ Item {
 
             Repeater {
                 model: [
-                    { key: 0, label: GitWatcher.t.tabFeed,     count: GitWatcher.mainFeedItems.length },
-                    { key: 1, label: GitWatcher.t.tabArchived, count: GitWatcher.archiveFeedItems.length },
+                    { key: 0, label: "Feed",     count: GitWatcher.mainFeedItems.length },
+                    { key: 1, label: "Archived", count: GitWatcher.archiveFeedItems.length },
                 ]
 
                 Item {
@@ -159,7 +159,7 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             visible: tabBar.currentTab === 0
             listModel: GitWatcher.mainFeedItems
-            emptyText: GitWatcher.t.nothingToReview
+            emptyText: "Nothing to review"
             listDelegate: feedDelegate
         }
 
@@ -167,7 +167,7 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             visible: tabBar.currentTab === 1
             listModel: GitWatcher.archiveFeedItems
-            emptyText: GitWatcher.t.noArchived
+            emptyText: "No archived items"
             listDelegate: archiveDelegate
         }
 
@@ -181,7 +181,7 @@ Item {
                 inactiveColour: Colours.palette.m3secondaryContainer
                 inactiveOnColour: Colours.palette.m3onSecondaryContainer
                 verticalPadding: Tokens.padding.small
-                text: GitWatcher.t.refresh; icon: "sync"
+                text: "Refresh"; icon: "sync"
                 onClicked: GitWatcher.refresh()
             }
 
@@ -190,7 +190,7 @@ Item {
                 inactiveColour: Colours.palette.m3primaryContainer
                 inactiveOnColour: Colours.palette.m3onPrimaryContainer
                 verticalPadding: Tokens.padding.small
-                text: GitWatcher.t.config; icon: "settings"
+                text: "Config"; icon: "settings"
                 onClicked: root.popouts.detachRequested("gitwatcher")
             }
         }
@@ -198,7 +198,7 @@ Item {
         StyledText {
             visible: GitWatcher.lastUpdated.length > 0
             Layout.fillWidth: true
-            text: GitWatcher.t.updatedAt.replace("%1", _fmtTime(GitWatcher.lastUpdated))
+            text: "Updated " + _fmtTime(GitWatcher.lastUpdated)
             font.pixelSize: Tokens.font.sizes.small - 1
             color: Colours.palette.m3secondary; opacity: 0.6
             horizontalAlignment: Text.AlignHCenter
@@ -290,10 +290,10 @@ Item {
                         StyledText {
                             id: chipLabel
                             anchors.centerIn: parent
-                            text: card.modelData.isOverdue ? GitWatcher.t.chipStalled :
-                                  card.modelData.hasMentions ? GitWatcher.t.chipMention :
-                                  card.modelData.hasUnreadComments ? GitWatcher.t.chipComment :
-                                  card.modelData.isOwned ? GitWatcher.t.chipMine : GitWatcher.t.chipPR
+                            text: card.modelData.isOverdue ? "stalled" :
+                                  card.modelData.hasMentions ? "mention" :
+                                  card.modelData.hasUnreadComments ? "comment" :
+                                  card.modelData.isOwned ? "mine" : "PR"
                             font.pixelSize: Tokens.font.sizes.small - 1
                             color: (card.modelData.isOverdue || card.modelData.hasMentions)
                                 ? "white" : Colours.palette.m3secondary
@@ -309,7 +309,7 @@ Item {
 
                     StyledText {
                         text: card.modelData.isOverdue
-                            ? GitWatcher.t.stalledPrefix + _fmtAge(card.modelData.stallMinutes ?? card.modelData.ageMinutes)
+                            ? "stalled " + _fmtAge(card.modelData.stallMinutes ?? card.modelData.ageMinutes)
                             : _fmtAge(card.modelData.ageMinutes)
                         font.pixelSize: Tokens.font.sizes.small
                         color: card.modelData.isOverdue
@@ -435,7 +435,7 @@ Item {
                             anchors.centerIn: parent
                             spacing: 4
                             MaterialIcon { text: card.modelData.isMuted ? "notifications_off" : "notifications"; color: Colours.palette.m3secondary; font.pixelSize: Tokens.font.sizes.normal }
-                            StyledText { text: card.modelData.isMuted ? GitWatcher.t.unmute : GitWatcher.t.mute; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
+                            StyledText { text: card.modelData.isMuted ? "Unmute" : "Mute"; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
                         }
 
                         StateLayer {
@@ -456,7 +456,7 @@ Item {
                             anchors.centerIn: parent
                             spacing: 4
                             MaterialIcon { text: "archive"; color: Colours.palette.m3error; font.pixelSize: Tokens.font.sizes.normal }
-                            StyledText { text: GitWatcher.t.dismiss; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3error }
+                            StyledText { text: "Dismiss"; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3error }
                         }
 
                         StateLayer {
@@ -513,9 +513,7 @@ Item {
 
                     StyledText {
                         id: archChip; anchors.centerIn: parent
-                        text: archCard.modelData.itemType === "pr_archived"
-                            ? GitWatcher.t.labelDismissed
-                            : GitWatcher.t.labelMerged
+                        text: archCard.modelData.itemType === "pr_archived" ? "dismissed" : "merged"
                         font.pixelSize: Tokens.font.sizes.small - 1
                         color: Colours.palette.m3secondary
                     }
