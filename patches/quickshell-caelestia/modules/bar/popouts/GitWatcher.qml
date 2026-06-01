@@ -12,15 +12,13 @@ Item {
 
     required property PopoutState popouts
 
-    implicitWidth: 300
-    implicitHeight: Math.min(outerCol.implicitHeight, 500)
+    // Fixed size — ListView scrolls within the content area.
+    // 320 × 580 gives room for ~12 PR rows before scrolling.
+    implicitWidth: 320
+    implicitHeight: 580
 
     ColumnLayout {
-        id: outerCol
-
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
+        anchors.fill: parent
         anchors.margins: Tokens.padding.normal
         spacing: Tokens.spacing.small
 
@@ -45,7 +43,6 @@ Item {
                 font.weight: 600
             }
 
-            // Loading spinner
             MaterialIcon {
                 visible: GitWatcher.loading
                 text: "sync"
@@ -57,7 +54,6 @@ Item {
                 }
             }
 
-            // Count badge
             StyledRect {
                 visible: GitWatcher.prs.length > 0
                 implicitWidth: badgeLabel.implicitWidth + Tokens.padding.small * 2
@@ -77,7 +73,7 @@ Item {
             }
         }
 
-        // Error
+        // Error banner
         StyledText {
             visible: GitWatcher.lastError.length > 0
             Layout.fillWidth: true
@@ -87,12 +83,17 @@ Item {
             wrapMode: Text.WordWrap
         }
 
-        // ── Tab bar ──────────────────────────────────────────────────────────
+        // ── Tabs ─────────────────────────────────────────────────────────────
+        // Fixed-height row; each tab cell is the same size.
+        // Content is centered using Row { anchors.centerIn } so presence or
+        // absence of the count badge doesn't affect alignment.
         RowLayout {
             Layout.fillWidth: true
             spacing: Tokens.spacing.smaller
 
             Repeater {
+                id: tabRepeater
+
                 model: [
                     { key: 0, label: qsTr("PRs"),      count: GitWatcher.prs.length },
                     { key: 1, label: qsTr("Comments"), count: GitWatcher.commentItems.length },
@@ -106,56 +107,49 @@ Item {
                     required property int index
 
                     Layout.fillWidth: true
-                    implicitHeight: tabRow.implicitHeight + Tokens.padding.small * 2
+                    implicitHeight: 30
 
-                    readonly property bool active: tabBar.currentTab === modelData.key
+                    readonly property bool isActive: tabBar.currentTab === modelData.key
 
                     StyledRect {
                         anchors.fill: parent
                         radius: Tokens.rounding.small
-                        color: tabItem.active
+                        color: tabItem.isActive
                             ? Colours.palette.m3primaryContainer
                             : Colours.tPalette.m3surfaceVariant
-                        opacity: tabItem.active ? 1 : 0.6
-
+                        opacity: tabItem.isActive ? 1 : 0.6
                         Behavior on color { Anim { type: Anim.StandardSmall } }
                     }
 
-                    RowLayout {
-                        id: tabRow
-
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.margins: Tokens.padding.small
-                        spacing: 3
+                    // Centered content regardless of badge visibility
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 4
 
                         StyledText {
-                            Layout.fillWidth: true
+                            anchors.verticalCenter: parent.verticalCenter
                             text: tabItem.modelData.label
                             font.pixelSize: Tokens.font.sizes.small
-                            font.weight: tabItem.active ? 600 : 400
-                            color: tabItem.active
+                            font.weight: tabItem.isActive ? 600 : 400
+                            color: tabItem.isActive
                                 ? Colours.palette.m3onPrimaryContainer
                                 : Colours.palette.m3onSurface
-                            horizontalAlignment: Text.AlignHCenter
                         }
 
                         StyledRect {
+                            anchors.verticalCenter: parent.verticalCenter
                             visible: tabItem.modelData.count > 0
-                            implicitWidth: cntLbl.implicitWidth + 6
-                            implicitHeight: cntLbl.implicitHeight + 2
+                            width: cntLbl.implicitWidth + 6
+                            height: cntLbl.implicitHeight + 2
                             radius: Tokens.rounding.full
-                            color: tabItem.active
-                                ? Colours.palette.m3primary
-                                : Colours.palette.m3surfaceVariant
+                            color: tabItem.isActive ? Colours.palette.m3primary : Colours.palette.m3surfaceVariant
 
                             StyledText {
                                 id: cntLbl
                                 anchors.centerIn: parent
                                 text: tabItem.modelData.count.toString()
                                 font.pixelSize: Tokens.font.sizes.small - 1
-                                color: tabItem.active ? "white" : Colours.palette.m3secondary
+                                color: tabItem.isActive ? "white" : Colours.palette.m3secondary
                             }
                         }
                     }
@@ -170,67 +164,42 @@ Item {
             }
         }
 
-        // Tab controller (no visual, just state)
-        QtObject {
-            id: tabBar
-            property int currentTab: 0
-        }
+        QtObject { id: tabBar; property int currentTab: 0 }
 
-        // ── Content area ─────────────────────────────────────────────────────
-        Item {
+        // ── Content — fills all remaining height ─────────────────────────────
+        FeedList {
+            id: prListItem
             Layout.fillWidth: true
-            implicitHeight: Math.min(contentStack.implicitHeight, 340)
-            clip: true
-
-            Item {
-                id: contentStack
-
-                anchors.left: parent.left
-                anchors.right: parent.right
-                // Height is the max of all three tabs
-                implicitHeight: Math.max(prListItem.implicitHeight,
-                                         commentListItem.implicitHeight,
-                                         mentionListItem.implicitHeight)
-
-                // PRs tab
-                FeedList {
-                    id: prListItem
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    visible: tabBar.currentTab === 0
-                    model: GitWatcher.prs
-                    emptyText: qsTr("No active PRs")
-                    delegate: prDelegate
-                }
-
-                // Comments tab
-                FeedList {
-                    id: commentListItem
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    visible: tabBar.currentTab === 1
-                    model: GitWatcher.commentItems
-                    emptyText: qsTr("No new comments")
-                    delegate: feedItemDelegate
-                }
-
-                // Mentions tab
-                FeedList {
-                    id: mentionListItem
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    visible: tabBar.currentTab === 2
-                    model: GitWatcher.mentionItems
-                    emptyText: qsTr("No mentions")
-                    delegate: feedItemDelegate
-                }
-            }
+            Layout.fillHeight: true
+            visible: tabBar.currentTab === 0
+            listModel: GitWatcher.prs
+            emptyText: qsTr("No active PRs")
+            listDelegate: prDelegate
         }
 
-        // ── Footer buttons ───────────────────────────────────────────────────
+        FeedList {
+            id: commentListItem
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: tabBar.currentTab === 1
+            listModel: GitWatcher.commentItems
+            emptyText: qsTr("No new comments")
+            listDelegate: feedItemDelegate
+        }
+
+        FeedList {
+            id: mentionListItem
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: tabBar.currentTab === 2
+            listModel: GitWatcher.mentionItems
+            emptyText: qsTr("No mentions")
+            listDelegate: feedItemDelegate
+        }
+
+        // ── Footer ───────────────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: Tokens.spacing.smaller
             spacing: Tokens.spacing.small
 
             IconTextButton {
@@ -254,7 +223,6 @@ Item {
             }
         }
 
-        // Last updated
         StyledText {
             visible: GitWatcher.lastUpdated.length > 0
             Layout.fillWidth: true
@@ -266,8 +234,39 @@ Item {
         }
     }
 
-    // ── Delegates ─────────────────────────────────────────────────────────────
+    // ── FeedList component ────────────────────────────────────────────────────
+    // Uses an Item wrapper (NOT a ListView subclass) so that listModel and
+    // listDelegate are plain properties that are explicitly forwarded to the
+    // internal ListView — no property shadowing, no implicit height collapse.
+    component FeedList: Item {
+        id: fl
 
+        required property var listModel
+        required property Component listDelegate
+        required property string emptyText
+
+        clip: true
+
+        ListView {
+            id: innerList
+            anchors.fill: parent
+            model: fl.listModel
+            delegate: fl.listDelegate
+            spacing: Tokens.spacing.smaller
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+        }
+
+        StyledText {
+            anchors.centerIn: parent
+            visible: innerList.count === 0
+            text: fl.emptyText
+            color: Colours.palette.m3secondary
+            font.pixelSize: Tokens.font.sizes.small
+        }
+    }
+
+    // ── PR row delegate ───────────────────────────────────────────────────────
     Component {
         id: prDelegate
 
@@ -277,7 +276,7 @@ Item {
             required property var modelData
 
             width: ListView.view?.width ?? 0
-            implicitHeight: prRowInner.implicitHeight + Tokens.padding.small * 2
+            implicitHeight: prInner.implicitHeight + Tokens.padding.small * 2
 
             readonly property bool isOverdue: modelData.isOverdue ?? false
 
@@ -293,7 +292,7 @@ Item {
             }
 
             ColumnLayout {
-                id: prRowInner
+                id: prInner
 
                 anchors.left: parent.left
                 anchors.right: parent.right
@@ -366,6 +365,7 @@ Item {
         }
     }
 
+    // ── Comment/mention row delegate ──────────────────────────────────────────
     Component {
         id: feedItemDelegate
 
@@ -436,35 +436,9 @@ Item {
         }
     }
 
-    // ── Scrollable feed list helper ───────────────────────────────────────────
-    component FeedList: ListView {
-        required property Component delegate
-        required property string emptyText
-
-        implicitHeight: contentHeight > 0 ? Math.min(contentHeight, 340) : emptyItem.implicitHeight + Tokens.padding.small * 2
-        spacing: Tokens.spacing.smaller
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-
-        Item {
-            id: emptyItem
-
-            anchors.fill: parent
-            visible: parent.count === 0
-
-            StyledText {
-                anchors.centerIn: parent
-                text: parent.parent?.emptyText ?? ""
-                color: Colours.palette.m3secondary
-                font.pixelSize: Tokens.font.sizes.small
-            }
-        }
-    }
-
     // ── Helpers ───────────────────────────────────────────────────────────────
     function _formatAge(minutes: int): string {
-        if (minutes < 60)
-            return qsTr("%1m").arg(minutes);
+        if (minutes < 60) return qsTr("%1m").arg(minutes);
         const h = Math.floor(minutes / 60);
         const m = minutes % 60;
         return m > 0 ? qsTr("%1h%2m").arg(h).arg(m) : qsTr("%1h").arg(h);
