@@ -475,9 +475,11 @@ Item {
                 }
             }
 
-            // Tap/click whole card to open URL (when not tapping actions)
+            // Tap/click whole card to open URL.
+            // Disabled when actions are visible so the action buttons can receive clicks.
             StateLayer {
                 anchors.fill: parent; radius: Tokens.rounding.normal; color: Colours.palette.m3onSurface
+                enabled: !card.showActions
                 onClicked: Qt.openUrlExternally(card.modelData.url)
             }
         }
