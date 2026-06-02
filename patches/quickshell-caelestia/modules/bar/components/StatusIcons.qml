@@ -228,7 +228,7 @@ StyledRect {
                     fill: 1
                     text: {
                         if (GitWatcher.filteredOverdueCount > 0) return "data_alert";
-                        if (GitWatcher.mainFeedItems.length > 0) return "data_info_alert";
+                        if (GitWatcher.unmutedFeedCount > 0) return "data_info_alert";
                         return "check";
                     }
                     color: GitWatcher.filteredOverdueCount > 0

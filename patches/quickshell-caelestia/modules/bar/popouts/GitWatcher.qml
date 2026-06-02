@@ -27,7 +27,7 @@ Item {
 
             MaterialIcon {
                 text: GitWatcher.filteredOverdueCount > 0 ? "data_alert"
-                    : GitWatcher.mainFeedItems.length > 0 ? "data_info_alert"
+                    : GitWatcher.unmutedFeedCount > 0 ? "data_info_alert"
                     : "check"
                 fill: 1
                 color: GitWatcher.filteredOverdueCount > 0

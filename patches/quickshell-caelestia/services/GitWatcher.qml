@@ -179,6 +179,9 @@ Singleton {
         return n;
     }
 
+    // Non-muted, non-dismissed feed item count (drives info icon state)
+    readonly property int unmutedFeedCount: mainFeedItems.filter(i => !i.isMuted).length
+
     // -----------------------------------------------------------------------
     // Mute / Dismiss operations
     // -----------------------------------------------------------------------
