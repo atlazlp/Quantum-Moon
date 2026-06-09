@@ -5,6 +5,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPSTREAM="${HOME}/.local/share/caelestia"
 YAY="${YAY:-yay}"
 
+# install <relpath> into ~/.config/caelestia/scripts keeping the basename.
+install_script() {
+  install -m755 "${ROOT}/$1" "${HOME}/.config/caelestia/scripts/$(basename "$1")"
+}
+
 echo "This installs Caelestia from ${UPSTREAM} (AUR meta in that repo) and symlinks ~/.config/hypr."
 echo "You need network access and sudo when pacman installs repo packages."
 echo
@@ -27,10 +32,10 @@ ln -sfn "${UPSTREAM}/hypr" "${HOME}/.config/hypr"
 chmod u+x "${HOME}/.config/hypr/scripts/wsaction.fish"
 
 mkdir -p "${HOME}/.config/hypr" "${HOME}/.config/caelestia/scripts"
-install -m755 "${ROOT}/scripts/inhibit-sleep-while-audio-playback.sh" "${HOME}/.config/caelestia/scripts/inhibit-sleep-while-audio-playback.sh"
-install -m755 "${ROOT}/scripts/audio-toggle-analog-output.sh" "${HOME}/.config/caelestia/scripts/audio-toggle-analog-output.sh"
-install -m755 "${ROOT}/scripts/audio-reload-mic.sh" "${HOME}/.config/caelestia/scripts/audio-reload-mic.sh"
-install -m755 "${ROOT}/scripts/audio-setup-analog-mic.sh" "${HOME}/.config/caelestia/scripts/audio-setup-analog-mic.sh"
+install_script scripts/inhibit-sleep-while-audio-playback.sh
+install_script scripts/audio-toggle-analog-output.sh
+install_script scripts/audio-reload-mic.sh
+install_script scripts/audio-setup-analog-mic.sh
 mkdir -p "${HOME}/.config/wireplumber/wireplumber.conf.d"
 install -m644 "${ROOT}/config/wireplumber/wireplumber.conf.d/51-alsa-analog-ports.conf" "${HOME}/.config/wireplumber/wireplumber.conf.d/51-alsa-analog-ports.conf"
 install -m644 "${ROOT}/config/wireplumber/wireplumber.conf.d/52-analog-mic-echo-cancel.conf" "${HOME}/.config/wireplumber/wireplumber.conf.d/52-analog-mic-echo-cancel.conf"
@@ -38,9 +43,9 @@ mkdir -p "${HOME}/.config/systemd/user"
 install -m644 "${ROOT}/config/systemd/user/audio-analog-mic-setup.service" "${HOME}/.config/systemd/user/audio-analog-mic-setup.service"
 systemctl --user daemon-reload 2>/dev/null || true
 systemctl --user enable --now audio-analog-mic-setup.service 2>/dev/null || true
-install -m755 "${ROOT}/caelestia/scripts/cursor-clean.sh" "${HOME}/.config/caelestia/scripts/cursor-clean.sh"
-install -m755 "${ROOT}/caelestia/scripts/nautilus-wrap.sh" "${HOME}/.config/caelestia/scripts/nautilus-wrap.sh"
-install -m755 "${ROOT}/caelestia/scripts/hyprresume-save.sh" "${HOME}/.config/caelestia/scripts/hyprresume-save.sh"
+install_script caelestia/scripts/cursor-clean.sh
+install_script caelestia/scripts/nautilus-wrap.sh
+install_script caelestia/scripts/hyprresume-save.sh
 install -m644 "${ROOT}/caelestia/hypr-user.conf" "${HOME}/.config/caelestia/hypr-user.conf"
 if [[ ! -f "${HOME}/.config/caelestia/hypr-user-local.conf" ]]; then
   install -m644 "${ROOT}/caelestia/hypr-user-local.conf" "${HOME}/.config/caelestia/hypr-user-local.conf"
