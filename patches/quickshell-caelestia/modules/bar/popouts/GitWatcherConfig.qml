@@ -260,9 +260,17 @@ Item {
             StyledText { text: "Discord"; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
 
             SwitchRow {
-                label: "Discord first — hold new PR alerts until the link is posted"
+                label: "Discord first"
                 checked: root._discordEnabled
                 onToggled: c => root._discordEnabled = c
+            }
+
+            StyledText {
+                text: "Hold new-PR alerts until the link is posted to a watched channel."
+                font.pixelSize: Tokens.font.sizes.small
+                color: Colours.palette.m3secondary
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
             }
 
             ColumnLayout {
@@ -627,6 +635,24 @@ Item {
             return 1;
         }
 
+        // Channels are returned already ordered by category; insert a
+        // non-interactive header row whenever the category changes so the
+        // dropdown mirrors the server's category layout.
+        readonly property var _displayItems: {
+            const items = [];
+            let lastCat = null;
+            for (const c of _channels) {
+                const cat = c.category ?? "";
+                if (cat !== lastCat) {
+                    lastCat = cat;
+                    if (cat.length > 0)
+                        items.push({ isHeader: true, label: cat });
+                }
+                items.push({ isHeader: false, id: c.id, name: c.name });
+            }
+            return items;
+        }
+
         spacing: 0
         clip: false
 
@@ -711,7 +737,7 @@ Item {
         Item {
             id: gsChannelWrapper
             Layout.fillWidth: true
-            implicitHeight: gs.expanded ? Math.min(gsChannelScroll.contentHeight + 4, 200) : 0
+            implicitHeight: gs.expanded ? Math.min(gsChannelScroll.contentHeight + 4, 320) : 0
             clip: true
             Behavior on implicitHeight { Anim {} }
 
@@ -727,17 +753,35 @@ Item {
                     spacing: 0
 
                     Repeater {
-                        model: gs._channels
+                        model: gs._displayItems
 
                         Item {
-                            id: gsChannelRow
+                            id: gsRow
                             required property var modelData
                             width: gsChannelCol.width
-                            implicitHeight: 36
+                            implicitHeight: modelData.isHeader ? 28 : 36
 
-                            readonly property bool _selected: !!gs.selectedSet[modelData.id]
+                            readonly property bool _selected: !modelData.isHeader && !!gs.selectedSet[modelData.id]
 
+                            // Category header (non-interactive)
+                            StyledText {
+                                visible: gsRow.modelData.isHeader
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 4
+                                anchors.leftMargin: Tokens.padding.normal + 4
+                                anchors.rightMargin: Tokens.padding.small
+                                text: (gsRow.modelData.label ?? "").toUpperCase()
+                                font.pixelSize: Tokens.font.sizes.small
+                                font.weight: 500
+                                color: Colours.palette.m3secondary
+                                elide: Text.ElideRight
+                            }
+
+                            // Channel row (checkbox)
                             RowLayout {
+                                visible: !gsRow.modelData.isHeader
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
@@ -746,15 +790,15 @@ Item {
                                 spacing: Tokens.spacing.small
 
                                 MaterialIcon {
-                                    fill: gsChannelRow._selected ? 1 : 0
-                                    text: gsChannelRow._selected ? "check_box" : "check_box_outline_blank"
-                                    color: gsChannelRow._selected ? Colours.palette.m3primary : Colours.palette.m3outline
+                                    fill: gsRow._selected ? 1 : 0
+                                    text: gsRow._selected ? "check_box" : "check_box_outline_blank"
+                                    color: gsRow._selected ? Colours.palette.m3primary : Colours.palette.m3outline
                                     font.pixelSize: Tokens.font.sizes.normal
                                 }
 
                                 StyledText {
                                     Layout.fillWidth: true
-                                    text: `#${gsChannelRow.modelData.name}`
+                                    text: `#${gsRow.modelData.name}`
                                     font.pixelSize: Tokens.font.sizes.small
                                     elide: Text.ElideRight
                                 }
@@ -764,7 +808,12 @@ Item {
                                 anchors.fill: parent
                                 radius: Tokens.rounding.small
                                 color: Colours.palette.m3onSurface
-                                onClicked: gs.channelToggled(gsChannelRow.modelData.id, !gsChannelRow._selected)
+                                enabled: !gsRow.modelData.isHeader
+                                onClicked: {
+                                    if (gsRow.modelData.isHeader)
+                                        return;
+                                    gs.channelToggled(gsRow.modelData.id, !gsRow._selected);
+                                }
                             }
                         }
                     }

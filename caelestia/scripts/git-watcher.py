@@ -265,9 +265,26 @@ def discord_fetch_channels(token: str, guild_id: str) -> list[dict]:
     data = _discord_api_get(f"/guilds/{guild_id}/channels", token)
     if not isinstance(data, list):
         return []
+    # type 4 = GUILD_CATEGORY — used to label/group the text channels below it
+    categories = {c["id"]: c for c in data if c.get("type") == 4}
     # type 0 = GUILD_TEXT, type 5 = GUILD_NEWS
-    return [{"id": c["id"], "name": c["name"]}
-            for c in data if c.get("type") in (0, 5)]
+    text_channels = [c for c in data if c.get("type") in (0, 5)]
+
+    def _sort_key(c):
+        cat = categories.get(c.get("parent_id"))
+        cat_pos = cat.get("position", 0) if cat else -1
+        return (cat_pos, c.get("position", 0))
+
+    text_channels.sort(key=_sort_key)
+    result = []
+    for c in text_channels:
+        cat = categories.get(c.get("parent_id"))
+        result.append({
+            "id": c["id"],
+            "name": c["name"],
+            "category": cat["name"] if cat else "",
+        })
+    return result
 
 
 def discord_fetch_channels_grouped(token: str) -> list[dict]:
