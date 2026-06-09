@@ -61,7 +61,6 @@ _comment_notified: set = set()     # "pr_id:thread_id" for sent comment notifs (
 # Discord-first: only surface PRs once their link is posted to a watched channel
 _discord_posted: dict = {}        # pr_id -> ISO timestamp first seen in Discord (persisted)
 _discord_last_msg_id: dict = {}   # channel_id -> newest processed Discord message snowflake
-_discord_channel_errors: dict = {}  # channel_id -> human-readable reason a watched channel can't be polled
 
 # ---------------------------------------------------------------------------
 # Config loading
@@ -237,14 +236,7 @@ _DISCORD_API = "https://discord.com/api/v10"
 _PR_URL_RE = re.compile(r'pullrequest/(\d+)', re.IGNORECASE)
 
 
-def _discord_api_get_ex(path: str, token: str) -> tuple:
-    """GET a Discord endpoint, returning (data, status).
-
-    status is the HTTP status on success (200) or error (e.g. 403), or 0 when
-    the request never completed (network error/timeout). Callers that care why
-    a request failed — e.g. distinguishing "no read permission" (403) from an
-    empty channel — use this; the thin _discord_api_get wrapper drops status.
-    """
+def _discord_api_get(path: str, token: str) -> dict | list | None:
     url = f"{_DISCORD_API}{path}"
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bot {token}",
@@ -253,19 +245,14 @@ def _discord_api_get_ex(path: str, token: str) -> tuple:
     })
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode()), resp.status
+            return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
         print(f"[git-watcher] Discord HTTP {e.code} for {path}: {body[:200]}", file=sys.stderr)
-        return None, e.code
+        return None
     except Exception as e:
         print(f"[git-watcher] Discord request failed for {path}: {e}", file=sys.stderr)
-        return None, 0
-
-
-def _discord_api_get(path: str, token: str) -> dict | list | None:
-    data, _status = _discord_api_get_ex(path, token)
-    return data
+        return None
 
 
 def discord_fetch_guilds(token: str) -> list[dict]:
@@ -315,34 +302,22 @@ def discord_fetch_channels_grouped(token: str) -> list[dict]:
     return result
 
 
-def _discord_channel_label(ch_id: str) -> str:
-    """Resolve a watched channel id to a "category / #name" label for warnings.
-
-    Reads the cached guild/channel list (DISCORD_PATH) the config UI already
-    populates; falls back to the raw id when the channel isn't in the cache.
-    """
-    try:
-        with open(DISCORD_PATH) as f:
-            for guild in json.load(f):
-                for c in guild.get("channels", []):
-                    if c.get("id") == ch_id:
-                        cat = c.get("category", "")
-                        name = c.get("name", ch_id)
-                        return f"{cat} / #{name}" if cat else f"#{name}"
-    except Exception:
-        pass
-    return ch_id
+def discord_fetch_messages(token: str, channel_id: str, after: str = None) -> list[dict]:
+    path = f"/channels/{channel_id}/messages?limit=100"
+    if after:
+        path += f"&after={after}"
+    data = _discord_api_get(path, token)
+    if not isinstance(data, list):
+        return []
+    return data
 
 
 def _poll_discord() -> dict:
     """Poll watched Discord channels for PR links in newly-seen messages.
 
     Returns {pr_id: iso_timestamp} where the timestamp is the earliest message
-    in which that PR link appeared this poll. Side effect: refreshes
-    _discord_channel_errors so a watched channel the bot cannot read (403) is
-    surfaced to the widget instead of silently producing no PRs.
+    in which that PR link appeared this poll.
     """
-    _discord_channel_errors.clear()
     dc = get_cfg("discordFirst", {})
     token = dc.get("token", "")
     channel_ids = dc.get("channels", [])
@@ -352,23 +327,7 @@ def _poll_discord() -> dict:
     found: dict = {}
     for ch_id in channel_ids:
         after = _discord_last_msg_id.get(ch_id)
-        path = f"/channels/{ch_id}/messages?limit=100"
-        if after:
-            path += f"&after={after}"
-        messages, status = _discord_api_get_ex(path, token)
-        if status == 403:
-            _discord_channel_errors[ch_id] = (
-                f"No read access to {_discord_channel_label(ch_id)} — "
-                "grant the bot View Channel + Read Message History there."
-            )
-            continue
-        if not isinstance(messages, list):
-            # Network error / unexpected payload — note it but stay generic.
-            if status != 200:
-                _discord_channel_errors[ch_id] = (
-                    f"Couldn't read {_discord_channel_label(ch_id)} (HTTP {status or 'error'})."
-                )
-            continue
+        messages = discord_fetch_messages(token, ch_id, after=after)
         if not messages:
             continue
         # Track the newest message ID regardless of return order
@@ -837,10 +796,6 @@ def _poll() -> dict:
         "mentionCount": mention_count,
         "commentItems": comment_items[-20:],
         "mentionItems": mention_items[-20:],
-        # Watched Discord channels the bot couldn't read this poll (e.g. 403).
-        # Empty in normal operation; surfaced as a banner so the failure to see
-        # newly-posted PRs isn't silent.
-        "discordWarnings": list(_discord_channel_errors.values()) if discord_first else [],
     }
 
 
@@ -872,7 +827,6 @@ def _write_error(msg: str):
         "mentionCount": 0,
         "commentItems": [],
         "mentionItems": [],
-        "discordWarnings": [],
     })
 
 
