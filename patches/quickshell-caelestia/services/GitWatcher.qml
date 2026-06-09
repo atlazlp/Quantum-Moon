@@ -227,6 +227,7 @@ Singleton {
 
     readonly property string _configPath: Quickshell.env("HOME") + "/.config/caelestia/git-watcher.json"
     readonly property string _statePath: Quickshell.env("HOME") + "/.local/state/caelestia/git-watcher-state.json"
+    readonly property string _discordPath: Quickshell.env("HOME") + "/.local/state/caelestia/git-watcher-discord.json"
     readonly property string _mutedPath: Quickshell.env("HOME") + "/.local/state/caelestia/git-watcher-muted.json"
     readonly property string _pidPath: Quickshell.env("HOME") + "/.local/state/caelestia/git-watcher.pid"
     readonly property string _daemonPath: Paths.config + "/../caelestia/scripts/git-watcher.py"

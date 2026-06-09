@@ -16,6 +16,7 @@ PID:    ~/.local/state/caelestia/git-watcher.pid
 import base64
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -33,6 +34,7 @@ CONFIG_PATH = os.path.join(HOME, ".config", "caelestia", "git-watcher.json")
 STATE_DIR = os.path.join(HOME, ".local", "state", "caelestia")
 STATE_PATH = os.path.join(STATE_DIR, "git-watcher-state.json")
 REPOS_PATH = os.path.join(STATE_DIR, "git-watcher-repos.json")
+DISCORD_PATH = os.path.join(STATE_DIR, "git-watcher-discord.json")
 MUTED_PATH = os.path.join(STATE_DIR, "git-watcher-muted.json")
 PID_PATH = os.path.join(STATE_DIR, "git-watcher.pid")
 
@@ -54,6 +56,10 @@ _pr_last_updated: dict = {}        # pr_id -> lastUpdatedDate string from API
 _overdue_notified: set = set()     # pr_ids for which overdue notif was sent
 _mention_notified: set = set()     # "pr_id:thread_id" for sent mention notifs
 _comment_notified: set = set()     # "pr_id:thread_id" for sent comment notifs (owned PRs)
+
+# Discord-first: hold new-PR notifications until the link appears in a watched channel
+_discord_pending_prs: dict = {}   # pr_id -> (summary, body)
+_discord_last_msg_id: dict = {}   # channel_id -> newest processed Discord message snowflake
 
 # ---------------------------------------------------------------------------
 # Config loading
@@ -219,6 +225,96 @@ def _load_muted() -> tuple[set, set]:
         return set(d.get("muted", [])), set(d.get("dismissed", []))
     except Exception:
         return set(), set()
+
+
+# ---------------------------------------------------------------------------
+# Discord REST helpers
+# ---------------------------------------------------------------------------
+
+_DISCORD_API = "https://discord.com/api/v10"
+_PR_URL_RE = re.compile(r'pullrequest/(\d+)', re.IGNORECASE)
+
+
+def _discord_api_get(path: str, token: str) -> dict | list | None:
+    url = f"{_DISCORD_API}{path}"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bot {token}",
+        "User-Agent": "git-watcher (https://github.com, 1.0)",
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        print(f"[git-watcher] Discord HTTP {e.code} for {path}: {body[:200]}", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"[git-watcher] Discord request failed for {path}: {e}", file=sys.stderr)
+        return None
+
+
+def discord_fetch_guilds(token: str) -> list[dict]:
+    data = _discord_api_get("/users/@me/guilds", token)
+    if not isinstance(data, list):
+        return []
+    return [{"id": g["id"], "name": g["name"]} for g in data]
+
+
+def discord_fetch_channels(token: str, guild_id: str) -> list[dict]:
+    data = _discord_api_get(f"/guilds/{guild_id}/channels", token)
+    if not isinstance(data, list):
+        return []
+    # type 0 = GUILD_TEXT, type 5 = GUILD_NEWS
+    return [{"id": c["id"], "name": c["name"]}
+            for c in data if c.get("type") in (0, 5)]
+
+
+def discord_fetch_channels_grouped(token: str) -> list[dict]:
+    """Return [{guild_id, guild_name, channels: [{id, name}]}] for the config UI."""
+    result = []
+    for guild in discord_fetch_guilds(token):
+        channels = discord_fetch_channels(token, guild["id"])
+        if channels:
+            result.append({
+                "guild_id": guild["id"],
+                "guild_name": guild["name"],
+                "channels": channels,
+            })
+    return result
+
+
+def discord_fetch_messages(token: str, channel_id: str, after: str = None) -> list[dict]:
+    path = f"/channels/{channel_id}/messages?limit=50"
+    if after:
+        path += f"&after={after}"
+    data = _discord_api_get(path, token)
+    if not isinstance(data, list):
+        return []
+    return data
+
+
+def _poll_discord() -> set:
+    """Poll watched Discord channels; return set of PR IDs found in new messages."""
+    dc = get_cfg("discordFirst", {})
+    token = dc.get("token", "")
+    channel_ids = dc.get("channels", [])
+    if not token or not channel_ids:
+        return set()
+
+    found: set = set()
+    for ch_id in channel_ids:
+        after = _discord_last_msg_id.get(ch_id)
+        messages = discord_fetch_messages(token, ch_id, after=after)
+        if not messages:
+            continue
+        # Track the newest message ID regardless of return order
+        newest_id = max((m["id"] for m in messages), key=lambda x: int(x))
+        _discord_last_msg_id[ch_id] = newest_id
+        for msg in messages:
+            for match in _PR_URL_RE.finditer(msg.get("content", "")):
+                found.add(int(match.group(1)))
+    return found
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +500,7 @@ def _poll() -> dict:
     notify_new_pr: bool = get_cfg("notifications", {}).get("newPr", True)
     notify_comment: bool = get_cfg("notifications", {}).get("prComment", True)
     notify_mention: bool = get_cfg("notifications", {}).get("prMention", True)
+    discord_first: bool = get_cfg("discordFirst", {}).get("enabled", False)
 
     # Only fetch watched repos for PR polling — one API call per watched project
     # instead of fetching all 100+ repos across every project on each poll.
@@ -420,6 +517,13 @@ def _poll() -> dict:
         full_repos = fetch_all_repos_grouped()
         if full_repos:
             _write_json(REPOS_PATH, full_repos)
+        # Refresh the Discord guild/channel list for the config UI while the
+        # feature is enabled and a token is set.
+        discord_token = get_cfg("discordFirst", {}).get("token", "")
+        if discord_first and discord_token:
+            guilds = discord_fetch_channels_grouped(discord_token)
+            if guilds:
+                _write_json(DISCORD_PATH, guilds)
 
     muted_ids, dismissed_ids = _load_muted()
 
@@ -465,12 +569,14 @@ def _poll() -> dict:
                     _seen_pr_ids.add(pr_id)
                     if notify_new_pr and not suppressed:
                         branch = _strip_branch(pr.get("sourceRefName", ""))
-                        _notify(
-                            f"New PR: {pr['title'][:60]}",
-                            f"{repo['name']} → {_strip_branch(pr.get('targetRefName', ''))} | {branch}",
-                            icon="mail-message-new",
-                            sound="message",
-                        )
+                        summary = f"New PR: {pr['title'][:60]}"
+                        body = f"{repo['name']} → {_strip_branch(pr.get('targetRefName', ''))} | {branch}"
+                        if discord_first:
+                            # Hold the notification until the PR link is posted in
+                            # a watched Discord channel (released in the poll below).
+                            _discord_pending_prs[pr_id] = (summary, body)
+                        else:
+                            _notify(summary, body, icon="mail-message-new", sound="message")
 
                 # Overdue = no approval AND stalled > threshold
                 is_overdue = stall_min >= overdue_minutes and not is_approved
@@ -612,6 +718,19 @@ def _poll() -> dict:
         if len(completed_pr_list) >= 20:
             break
 
+    # Discord-first: poll watched channels and release any held new-PR
+    # notifications whose PR link has now appeared in Discord.
+    if discord_first:
+        confirmed = _poll_discord()
+        for pid in list(_discord_pending_prs):
+            if pid in confirmed:
+                summary, body = _discord_pending_prs.pop(pid)
+                _notify(summary, body, icon="mail-message-new", sound="message")
+        # Drop held notifications for PRs that are no longer active on Azure.
+        for pid in list(_discord_pending_prs):
+            if pid not in active_pr_ids:
+                _discord_pending_prs.pop(pid, None)
+
     # Clean up tracking state for PRs no longer active
     gone = set(_seen_pr_ids) - active_pr_ids
     for gid in gone:
@@ -741,4 +860,12 @@ def main():
 
 
 if __name__ == "__main__":
+    # One-shot: fetch the Discord guild/channel list and write it for the config
+    # UI, then exit. Token is passed as argv (or via GW_DISCORD_TOKEN) so the
+    # config form can load channels before the config is saved.
+    if len(sys.argv) >= 2 and sys.argv[1] == "--fetch-discord-channels":
+        tok = sys.argv[2] if len(sys.argv) >= 3 else os.environ.get("GW_DISCORD_TOKEN", "")
+        guilds = discord_fetch_channels_grouped(tok) if tok else []
+        _write_json(DISCORD_PATH, guilds)
+        sys.exit(0)
     main()

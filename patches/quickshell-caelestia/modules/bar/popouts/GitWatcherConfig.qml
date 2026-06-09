@@ -46,7 +46,29 @@ Item {
         }
     }
 
-    Component.onCompleted: { cfgFile.reload(); reposFile.reload(); }
+    FileView {
+        id: discordFile
+        path: GitWatcher._discordPath
+        watchChanges: false
+        printErrors: false
+        onLoaded: {
+            try { root._discordGuilds = JSON.parse(text()); }
+            catch (e) { root._discordGuilds = []; }
+        }
+        onLoadFailed: root._discordGuilds = []
+    }
+
+    // One-shot fetch of the Discord guild/channel list using the in-form token.
+    Process {
+        id: discordFetchProc
+        command: ["python3", GitWatcher._daemonPath, "--fetch-discord-channels", root._discordToken]
+        onExited: {
+            root._discordLoading = false;
+            discordFile.reload();
+        }
+    }
+
+    Component.onCompleted: { cfgFile.reload(); reposFile.reload(); discordFile.reload(); }
 
     // -----------------------------------------------------------------------
     // Form state
@@ -64,6 +86,14 @@ Item {
     property string _mentionColor: "#e53935"
     property var    _watchedSet: ({})
 
+    // Discord-first
+    property bool   _discordEnabled: false
+    property string _discordToken: ""
+    property bool   _discordTokenVisible: false
+    property var    _discordChannelsSet: ({})   // { channelId: true }
+    property var    _discordGuilds: []           // [{guild_id, guild_name, channels: [{id, name}]}]
+    property bool   _discordLoading: false
+
     function _syncFormFromCfg(): void {
         _pat            = _cfg.pat ?? "";
         _orgUrl         = _cfg.organizationUrl ?? "";
@@ -78,6 +108,12 @@ Item {
         const set = {};
         for (const k of (_cfg.watchedRepos ?? [])) set[k] = true;
         _watchedSet = set;
+
+        _discordEnabled = _cfg.discordFirst?.enabled ?? false;
+        _discordToken   = _cfg.discordFirst?.token ?? "";
+        const dset = {};
+        for (const c of (_cfg.discordFirst?.channels ?? [])) dset[c] = true;
+        _discordChannelsSet = dset;
     }
 
     function _isRepoWatched(project: string, repo: string): bool {
@@ -108,7 +144,22 @@ Item {
                 prComment: _notifyComment,
                 prMention: _notifyMention,
             },
+            discordFirst: {
+                enabled: _discordEnabled,
+                token: _discordToken,
+                channels: Object.keys(_discordChannelsSet),
+            },
         }, null, 2);
+    }
+
+    function _isChannelSelected(chId: string): bool {
+        return !!root._discordChannelsSet[chId];
+    }
+
+    function _setChannelSelected(chId: string, sel: bool): void {
+        const copy = Object.assign({}, root._discordChannelsSet);
+        if (sel) copy[chId] = true; else delete copy[chId];
+        root._discordChannelsSet = copy;
     }
 
     function _apply(): void {
@@ -204,6 +255,98 @@ Item {
             SwitchRow { label: "Comment on my PR";  checked: root._notifyComment;  onToggled: c => root._notifyComment = c }
             SwitchRow { label: "Mention (@me)";     checked: root._notifyMention;  onToggled: c => root._notifyMention = c }
             LabeledField { label: "Overdue threshold (min)"; hint: "Stalled + unapproved after this long"; isNumber: true; value: root._overdueMinutes.toString(); onEdited: val => { const n = parseInt(val); if (!isNaN(n)) root._overdueMinutes = Math.max(1, n); } }
+
+            // ── Discord ──
+            StyledText { text: "Discord"; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
+
+            SwitchRow {
+                label: "Discord first — hold new PR alerts until the link is posted"
+                checked: root._discordEnabled
+                onToggled: c => root._discordEnabled = c
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: root._discordEnabled
+                spacing: Tokens.spacing.normal
+
+                // Bot token (with visibility toggle, like the PAT field)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    StyledText { text: "Bot token"; font.pixelSize: Tokens.font.sizes.small; color: Colours.palette.m3secondary }
+
+                    StyledRect {
+                        Layout.fillWidth: true
+                        implicitHeight: dcTokenField.implicitHeight + Tokens.padding.small * 2
+                        radius: Tokens.rounding.small
+                        color: Colours.layer(Colours.palette.m3surfaceContainer, 1)
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Tokens.padding.small
+                            anchors.rightMargin: 2
+                            spacing: 0
+
+                            StyledTextField {
+                                id: dcTokenField
+                                Layout.fillWidth: true
+                                text: root._discordToken
+                                echoMode: root._discordTokenVisible ? TextField.Normal : TextField.Password
+                                placeholderText: "Bot token from the Discord Developer Portal"
+                                onTextEdited: root._discordToken = text
+                            }
+
+                            Item {
+                                implicitWidth: 28; implicitHeight: 28
+                                MaterialIcon { anchors.centerIn: parent; text: root._discordTokenVisible ? "visibility_off" : "visibility"; color: Colours.palette.m3secondary; font.pixelSize: Tokens.font.sizes.normal }
+                                StateLayer { anchors.fill: parent; radius: Tokens.rounding.small; color: Colours.palette.m3onSurface; onClicked: root._discordTokenVisible = !root._discordTokenVisible }
+                            }
+                        }
+                    }
+                }
+
+                IconTextButton {
+                    Layout.fillWidth: true
+                    text: root._discordLoading ? "Loading channels…" : "Load channels from token"
+                    icon: "refresh"
+                    inactiveColour: Colours.palette.m3surfaceVariant
+                    inactiveOnColour: Colours.palette.m3onSurfaceVariant
+                    verticalPadding: Tokens.padding.small
+                    enabled: root._discordToken.length > 0 && !root._discordLoading
+                    onClicked: {
+                        if (root._discordToken.length === 0 || root._discordLoading)
+                            return;
+                        root._discordLoading = true;
+                        discordFetchProc.running = true;
+                    }
+                }
+
+                StyledText {
+                    visible: root._discordGuilds.length === 0
+                    text: "No channels loaded yet — enter a bot token and tap Load. Only channels selected here release held PR alerts."
+                    font.pixelSize: Tokens.font.sizes.small
+                    color: Colours.palette.m3secondary
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                Repeater {
+                    model: root._discordGuilds
+
+                    GuildSection {
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        guildName: modelData.guild_name
+                        channels: modelData.channels ?? []
+                        selectedSet: root._discordChannelsSet
+
+                        onChannelToggled: (chId, sel) => root._setChannelSelected(chId, sel)
+                    }
+                }
+            }
 
             // ── Colors ──
             StyledText { text: "Colors"; font.weight: 500; Layout.topMargin: Tokens.spacing.smaller }
@@ -446,6 +589,182 @@ Item {
                                 radius: Tokens.rounding.small
                                 color: Colours.palette.m3onSurface
                                 onClicked: ps.repoToggled(ps._name, repoRow.modelData.name, !repoRow._watched)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Guild / channel section (Discord)
+    // -----------------------------------------------------------------------
+    component GuildSection: ColumnLayout {
+        id: gs
+
+        required property string guildName
+        required property var    channels
+        required property var    selectedSet
+
+        signal channelToggled(string chId, bool sel)
+
+        property bool expanded: false
+        property string _name: ""
+        property var    _channels: []
+        Component.onCompleted: { _name = guildName; _channels = channels; }
+
+        readonly property int selectedCount: {
+            let n = 0;
+            for (const c of _channels)
+                if (selectedSet[c.id]) n++;
+            return n;
+        }
+        readonly property int checkState: {
+            if (_channels.length === 0) return 0;
+            if (selectedCount === 0) return 0;
+            if (selectedCount === _channels.length) return 2;
+            return 1;
+        }
+
+        spacing: 0
+        clip: false
+
+        Item {
+            Layout.fillWidth: true
+            implicitHeight: 44
+
+            StyledRect { anchors.fill: parent; radius: Tokens.rounding.small; color: Colours.tPalette.m3surfaceVariant; opacity: 0.5 }
+
+            Item {
+                id: gsCheckboxHit
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: 40; height: parent.height
+                z: 2
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    fill: gs.checkState > 0 ? 1 : 0
+                    text: gs.checkState === 2 ? "check_box"
+                        : gs.checkState === 1 ? "indeterminate_check_box"
+                        : "check_box_outline_blank"
+                    color: gs.checkState === 2 ? Colours.palette.m3primary
+                         : gs.checkState === 1 ? Colours.palette.m3secondary
+                         : Colours.palette.m3outline
+                    font.pixelSize: Tokens.font.sizes.large
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        const enable = gs.selectedCount === 0;
+                        for (const c of gs._channels)
+                            gs.channelToggled(c.id, enable);
+                    }
+                }
+            }
+
+            Item {
+                anchors.left: gsCheckboxHit.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+
+                RowLayout {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.rightMargin: Tokens.padding.small
+                    spacing: Tokens.spacing.small
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: gs._name
+                        font.weight: 500
+                        elide: Text.ElideRight
+                    }
+
+                    StyledText {
+                        text: `${gs.selectedCount}/${gs._channels.length}`
+                        font.pixelSize: Tokens.font.sizes.small
+                        color: Colours.palette.m3secondary
+                    }
+
+                    MaterialIcon {
+                        text: "expand_more"
+                        color: Colours.palette.m3secondary
+                        rotation: gs.expanded ? 180 : 0
+                        Behavior on rotation { Anim { type: Anim.StandardSmall } }
+                    }
+                }
+
+                StateLayer {
+                    anchors.fill: parent
+                    radius: Tokens.rounding.small
+                    color: Colours.palette.m3onSurface
+                    onClicked: gs.expanded = !gs.expanded
+                }
+            }
+        }
+
+        Item {
+            id: gsChannelWrapper
+            Layout.fillWidth: true
+            implicitHeight: gs.expanded ? Math.min(gsChannelScroll.contentHeight + 4, 200) : 0
+            clip: true
+            Behavior on implicitHeight { Anim {} }
+
+            ScrollView {
+                id: gsChannelScroll
+                anchors.fill: parent
+                contentWidth: availableWidth
+                clip: true
+
+                ColumnLayout {
+                    id: gsChannelCol
+                    width: gsChannelScroll.availableWidth
+                    spacing: 0
+
+                    Repeater {
+                        model: gs._channels
+
+                        Item {
+                            id: gsChannelRow
+                            required property var modelData
+                            width: gsChannelCol.width
+                            implicitHeight: 36
+
+                            readonly property bool _selected: !!gs.selectedSet[modelData.id]
+
+                            RowLayout {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: Tokens.padding.normal * 2 + 4
+                                anchors.rightMargin: Tokens.padding.small
+                                spacing: Tokens.spacing.small
+
+                                MaterialIcon {
+                                    fill: gsChannelRow._selected ? 1 : 0
+                                    text: gsChannelRow._selected ? "check_box" : "check_box_outline_blank"
+                                    color: gsChannelRow._selected ? Colours.palette.m3primary : Colours.palette.m3outline
+                                    font.pixelSize: Tokens.font.sizes.normal
+                                }
+
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: `#${gsChannelRow.modelData.name}`
+                                    font.pixelSize: Tokens.font.sizes.small
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            StateLayer {
+                                anchors.fill: parent
+                                radius: Tokens.rounding.small
+                                color: Colours.palette.m3onSurface
+                                onClicked: gs.channelToggled(gsChannelRow.modelData.id, !gsChannelRow._selected)
                             }
                         }
                     }

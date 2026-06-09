@@ -51,6 +51,11 @@ cat > "$CONFIG_FILE" <<JSON
     "overdueMinutes": 60,
     "prComment": true,
     "prMention": true
+  },
+  "discordFirst": {
+    "enabled": false,
+    "token": "",
+    "channels": []
   }
 }
 JSON
