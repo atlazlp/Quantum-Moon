@@ -21,6 +21,7 @@ Singleton {
     property int mentionCount: 0   // raw from daemon, unfiltered
     property bool loading: false
     property string lastError: ""
+    property var discordWarnings: []  // watched Discord channels the bot couldn't read this poll
     property string lastUpdated: ""
 
     // Mute/dismiss state managed here (not by daemon)
@@ -284,6 +285,7 @@ Singleton {
             root.overdueCount = s.overdueCount ?? 0;
             root.mentionCount = s.mentionCount ?? 0;
             root.lastError = s.error ?? "";
+            root.discordWarnings = s.discordWarnings ?? [];
             root.lastUpdated = s.lastUpdated ?? "";
             root.loading = false;
         } catch (e) {

@@ -79,6 +79,35 @@ Item {
             wrapMode: Text.WordWrap
         }
 
+        // Discord-first warnings: watched channels the bot can't read. Without
+        // this, newly-posted PRs in an unreadable channel just never appear and
+        // there's no hint why.
+        Repeater {
+            model: GitWatcher.discordWarnings ?? []
+
+            RowLayout {
+                required property string modelData
+
+                Layout.fillWidth: true
+                spacing: Tokens.spacing.smaller
+
+                MaterialIcon {
+                    text: "warning"
+                    fill: 1
+                    color: GitWatcher._configData?.colors?.overdue ?? "#ff9500"
+                    font.pixelSize: Tokens.font.sizes.normal
+                }
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: modelData
+                    color: GitWatcher._configData?.colors?.overdue ?? "#ff9500"
+                    font.pixelSize: Tokens.font.sizes.small
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+
         // ── Tabs ─────────────────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
