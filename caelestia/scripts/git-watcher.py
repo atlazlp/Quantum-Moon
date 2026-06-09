@@ -35,6 +35,7 @@ STATE_DIR = os.path.join(HOME, ".local", "state", "caelestia")
 STATE_PATH = os.path.join(STATE_DIR, "git-watcher-state.json")
 REPOS_PATH = os.path.join(STATE_DIR, "git-watcher-repos.json")
 DISCORD_PATH = os.path.join(STATE_DIR, "git-watcher-discord.json")
+DISCORD_POSTED_PATH = os.path.join(STATE_DIR, "git-watcher-discord-posted.json")
 MUTED_PATH = os.path.join(STATE_DIR, "git-watcher-muted.json")
 PID_PATH = os.path.join(STATE_DIR, "git-watcher.pid")
 
@@ -57,8 +58,8 @@ _overdue_notified: set = set()     # pr_ids for which overdue notif was sent
 _mention_notified: set = set()     # "pr_id:thread_id" for sent mention notifs
 _comment_notified: set = set()     # "pr_id:thread_id" for sent comment notifs (owned PRs)
 
-# Discord-first: hold new-PR notifications until the link appears in a watched channel
-_discord_pending_prs: dict = {}   # pr_id -> (summary, body)
+# Discord-first: only surface PRs once their link is posted to a watched channel
+_discord_posted: dict = {}        # pr_id -> ISO timestamp first seen in Discord (persisted)
 _discord_last_msg_id: dict = {}   # channel_id -> newest processed Discord message snowflake
 
 # ---------------------------------------------------------------------------
@@ -302,7 +303,7 @@ def discord_fetch_channels_grouped(token: str) -> list[dict]:
 
 
 def discord_fetch_messages(token: str, channel_id: str, after: str = None) -> list[dict]:
-    path = f"/channels/{channel_id}/messages?limit=50"
+    path = f"/channels/{channel_id}/messages?limit=100"
     if after:
         path += f"&after={after}"
     data = _discord_api_get(path, token)
@@ -311,15 +312,19 @@ def discord_fetch_messages(token: str, channel_id: str, after: str = None) -> li
     return data
 
 
-def _poll_discord() -> set:
-    """Poll watched Discord channels; return set of PR IDs found in new messages."""
+def _poll_discord() -> dict:
+    """Poll watched Discord channels for PR links in newly-seen messages.
+
+    Returns {pr_id: iso_timestamp} where the timestamp is the earliest message
+    in which that PR link appeared this poll.
+    """
     dc = get_cfg("discordFirst", {})
     token = dc.get("token", "")
     channel_ids = dc.get("channels", [])
     if not token or not channel_ids:
-        return set()
+        return {}
 
-    found: set = set()
+    found: dict = {}
     for ch_id in channel_ids:
         after = _discord_last_msg_id.get(ch_id)
         messages = discord_fetch_messages(token, ch_id, after=after)
@@ -329,8 +334,11 @@ def _poll_discord() -> set:
         newest_id = max((m["id"] for m in messages), key=lambda x: int(x))
         _discord_last_msg_id[ch_id] = newest_id
         for msg in messages:
+            ts = msg.get("timestamp", "")
             for match in _PR_URL_RE.finditer(msg.get("content", "")):
-                found.add(int(match.group(1)))
+                pid = int(match.group(1))
+                if pid not in found or (ts and ts < found[pid]):
+                    found[pid] = ts
     return found
 
 
@@ -445,6 +453,9 @@ def _parse_date(s: str) -> datetime | None:
         return None
     try:
         s = s.rstrip("Z")
+        # Strip a trailing timezone offset (e.g. Discord's "+00:00") so both
+        # Azure (UTC "Z") and Discord ISO timestamps parse via the same path.
+        s = re.sub(r"[+-]\d{2}:?\d{2}$", "", s)
         if "." in s:
             # Azure DevOps / .NET serializes DateTime with 7 fractional digits.
             # Python's %f only handles up to 6 — truncate to avoid ValueError.
@@ -544,6 +555,20 @@ def _poll() -> dict:
 
     muted_ids, dismissed_ids = _load_muted()
 
+    # Discord-first: refresh the set of PRs that have been posted to a watched
+    # channel. The map is persisted (DISCORD_POSTED_PATH) so a restart doesn't
+    # lose history. It gates both feed visibility and the "posted N ago" time.
+    if discord_first:
+        newly_posted = _poll_discord()
+        changed = False
+        for pid, ts in newly_posted.items():
+            if pid not in _discord_posted:
+                _discord_posted[pid] = ts or _now_iso()
+                changed = True
+        if changed:
+            _write_json(DISCORD_POSTED_PATH,
+                        {str(k): v for k, v in _discord_posted.items()})
+
     active_pr_ids: set = set()
     result_prs = []
     completed_pr_list: list = []
@@ -563,6 +588,11 @@ def _poll() -> dict:
                 pr_id = pr["pullRequestId"]
                 active_pr_ids.add(pr_id)
 
+                # Discord-first: hide PRs whose link has not been posted to a
+                # watched channel yet — no feed entry, no notification.
+                if discord_first and pr_id not in _discord_posted:
+                    continue
+
                 created_at = pr.get("creationDate", "")
                 if pr_id not in _pr_first_seen:
                     _pr_first_seen[pr_id] = datetime.now(timezone.utc)
@@ -581,19 +611,15 @@ def _poll() -> dict:
                 # Skip all notifications for muted or dismissed PRs
                 suppressed = pr_id in muted_ids or pr_id in dismissed_ids
 
-                # Detect new PR
+                # Detect new PR (in Discord-first mode this only runs once the PR
+                # has been posted, since unposted PRs are skipped above).
                 if pr_id not in _seen_pr_ids:
                     _seen_pr_ids.add(pr_id)
                     if notify_new_pr and not suppressed:
                         branch = _strip_branch(pr.get("sourceRefName", ""))
                         summary = f"New PR: {pr['title'][:60]}"
                         body = f"{repo['name']} → {_strip_branch(pr.get('targetRefName', ''))} | {branch}"
-                        if discord_first:
-                            # Hold the notification until the PR link is posted in
-                            # a watched Discord channel (released in the poll below).
-                            _discord_pending_prs[pr_id] = (summary, body)
-                        else:
-                            _notify(summary, body, icon="mail-message-new", sound="message")
+                        _notify(summary, body, icon="mail-message-new", sound="message")
 
                 # Overdue = no approval AND stalled > threshold
                 is_overdue = stall_min >= overdue_minutes and not is_approved
@@ -709,6 +735,11 @@ def _poll() -> dict:
                     "hasMentions": has_mentions,
                     "isOwned": is_owned,
                     "isReviewer": is_reviewer,
+                    # In Discord-first mode, time-since is measured from the
+                    # moment the link was posted, not PR creation. -1 = N/A.
+                    "discordPostedAt": _discord_posted.get(pr_id) if discord_first else None,
+                    "postedMinutes": int(_age_minutes(_discord_posted[pr_id]))
+                                     if (discord_first and pr_id in _discord_posted) else -1,
                 })
 
     # Collect completed PRs for archive tab (last 3 per watched repo, cap 20 total)
@@ -734,19 +765,6 @@ def _poll() -> dict:
                 break
         if len(completed_pr_list) >= 20:
             break
-
-    # Discord-first: poll watched channels and release any held new-PR
-    # notifications whose PR link has now appeared in Discord.
-    if discord_first:
-        confirmed = _poll_discord()
-        for pid in list(_discord_pending_prs):
-            if pid in confirmed:
-                summary, body = _discord_pending_prs.pop(pid)
-                _notify(summary, body, icon="mail-message-new", sound="message")
-        # Drop held notifications for PRs that are no longer active on Azure.
-        for pid in list(_discord_pending_prs):
-            if pid not in active_pr_ids:
-                _discord_pending_prs.pop(pid, None)
 
     # Clean up tracking state for PRs no longer active
     gone = set(_seen_pr_ids) - active_pr_ids
@@ -855,6 +873,15 @@ def main():
     if not pat:
         _write_error("No PAT configured. Open the GitWatcher config and enter your PAT.")
         sys.exit(1)
+
+    # Restore the Discord-posted history so a restart doesn't re-hide PRs that
+    # were already announced in a watched channel.
+    try:
+        with open(DISCORD_POSTED_PATH) as f:
+            for k, v in json.load(f).items():
+                _discord_posted[int(k)] = v
+    except Exception:
+        pass
 
     print("[git-watcher] starting", file=sys.stderr)
 

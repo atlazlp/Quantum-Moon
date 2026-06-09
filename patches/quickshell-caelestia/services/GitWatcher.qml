@@ -73,6 +73,7 @@ Singleton {
                 targetBranch: pr.targetBranch ?? "",
                 ageMinutes: pr.ageMinutes ?? 0,
                 stallMinutes: pr.stallMinutes ?? 0,
+                postedMinutes: pr.postedMinutes ?? -1,
                 isOverdue: pr.isOverdue ?? false,
                 isOwned: pr.isOwned ?? false,
                 isApproved: pr.isApproved ?? false,

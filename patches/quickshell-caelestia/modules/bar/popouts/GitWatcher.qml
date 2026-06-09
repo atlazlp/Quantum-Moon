@@ -308,17 +308,21 @@ Item {
                     }
 
                     StyledText {
-                        // Show time since last commit push (stallMinutes) as it's
-                        // closer to "last update" than PR creation time (ageMinutes).
-                        // Falls back to ageMinutes when stallMinutes is 0 (no commits).
+                        // In Discord-first mode, show time since the link was posted
+                        // to Discord (postedMinutes). Otherwise show time since the
+                        // last commit push (stallMinutes), falling back to PR age.
+                        readonly property bool usesPosted: (GitWatcher._configData?.discordFirst?.enabled ?? false)
+                                                           && (card.modelData.postedMinutes ?? -1) >= 0
                         readonly property int displayMin: {
+                            if (usesPosted)
+                                return card.modelData.postedMinutes;
                             const stall = card.modelData.stallMinutes ?? 0;
                             const age   = card.modelData.ageMinutes  ?? 0;
                             return (stall > 0) ? stall : age;
                         }
-                        text: card.modelData.isOverdue
-                            ? "stalled " + _fmtAge(displayMin)
-                            : _fmtAge(displayMin)
+                        text: usesPosted
+                            ? "posted " + _fmtAge(displayMin)
+                            : (card.modelData.isOverdue ? "stalled " + _fmtAge(displayMin) : _fmtAge(displayMin))
                         font.pixelSize: Tokens.font.sizes.small
                         color: card.modelData.isOverdue
                             ? (GitWatcher._configData?.colors?.overdue ?? "#ff9500")
