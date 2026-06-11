@@ -283,4 +283,44 @@ Singleton {
     HyprExtras {
         id: extras
     }
+
+    property real cursorX: 0
+    property real cursorY: 0
+
+    signal cursorMoved(real x, real y)
+
+    function cursorOnScreen(screen: ShellScreen): bool {
+        return cursorX >= screen.x && cursorX < screen.x + screen.width && cursorY >= screen.y && cursorY < screen.y + screen.height;
+    }
+
+    Timer {
+        id: cursorTimer
+
+        interval: 40
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: cursorPoll.running = true
+    }
+
+    Process {
+        id: cursorPoll
+
+        command: ["hyprctl", "cursorpos", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (!text)
+                    return;
+                try {
+                    const pos = JSON.parse(text);
+                    if (pos.x !== root.cursorX || pos.y !== root.cursorY) {
+                        root.cursorX = pos.x;
+                        root.cursorY = pos.y;
+                        root.cursorMoved(pos.x, pos.y);
+                    }
+                } catch (e) {
+                }
+            }
+        }
+    }
 }

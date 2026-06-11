@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Caelestia.Config
 import qs.modules.bar as Bar
+import qs.utils
 
 Region {
     id: root
@@ -26,9 +27,17 @@ Region {
     height: immersivePointer ? (win.height - clampedThickness - win.dragMaskPadding) : (win.height - clampedThickness * 2 - win.dragMaskPadding * 2)
     intersection: Intersection.Xor
 
-    readonly property real launcherCutoutH: shellReceivesLauncherPointer ? 0 : (root.panels.launcher.height * (1 - root.panels.launcher.offsetScale) + root.borderThickness)
-    readonly property real pickerCutoutH: shellReceivesWindowPickerPointer ? 0 : (root.panels.windowPicker.height * (1 - root.panels.windowPicker.offsetScale) + root.borderThickness)
-    readonly property real utilitiesCutoutH: immersivePointer ? 0 : (root.panels.utilities.height * (1 - root.panels.utilities.offsetScale) + root.borderThickness)
+    function bottomCutoutHeight(panel: Item): real {
+        const scale = panel.offsetScale ?? 0;
+        if (scale >= 0.999)
+            return LayoutTweaks.bottomHoverTriggerPx + root.borderThickness;
+        const revealed = panel.height * (1 - scale);
+        return Math.max(revealed, LayoutTweaks.bottomHoverTriggerPx) + root.borderThickness;
+    }
+
+    readonly property real launcherCutoutH: shellReceivesLauncherPointer ? 0 : bottomCutoutHeight(root.panels.launcher)
+    readonly property real pickerCutoutH: shellReceivesWindowPickerPointer ? 0 : bottomCutoutHeight(root.panels.windowPicker)
+    readonly property real utilitiesCutoutH: immersivePointer ? 0 : bottomCutoutHeight(root.panels.utilities)
 
     R {
         panel: root.panels.dashboard

@@ -18,8 +18,33 @@ Scope {
     property bool pipewirePlaybackActive: false
 
     readonly property string audioMarkerPath: `${Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"}/caelestia-audio-playback.active`
+    readonly property string resumeGracePath: `${Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"}/caelestia-resume-grace.until`
     readonly property string lockedSleepScript: `${Paths.config}/scripts/locked-sleep-after.sh`
     readonly property int lockedSleepAfter: GlobalConfig.general.idle.lockedSleepAfter ?? 300
+
+    FileView {
+        id: resumeGrace
+
+        printErrors: false
+        path: root.resumeGracePath
+    }
+
+    function withinResumeGrace(): bool {
+        if (!resumeGrace.loaded)
+            return false;
+        const until = parseInt(resumeGrace.text(), 10);
+        if (Number.isNaN(until) || until <= 0)
+            return false;
+        return Math.floor(Date.now() / 1000) < until;
+    }
+
+    function actionIsSuspend(action: var): bool {
+        if (typeof action === "string")
+            return /suspend/i.test(action);
+        if (Array.isArray(action))
+            return action.some(part => typeof part === "string" && /suspend/i.test(part));
+        return false;
+    }
 
     FileView {
         id: audioMarker
@@ -36,8 +61,12 @@ Scope {
     Timer {
         interval: 2000
         repeat: true
-        running: GlobalConfig.general.idle.inhibitWhenAudio
-        onTriggered: audioMarker.reload()
+        running: true
+        onTriggered: {
+            if (GlobalConfig.general.idle.inhibitWhenAudio)
+                audioMarker.reload();
+            resumeGrace.reload();
+        }
     }
 
     readonly property bool enabled: !(GlobalConfig.general.idle.inhibitWhenAudio && (Players.list.some(p => p.isPlaying) || root.pipewirePlaybackActive))
@@ -65,6 +94,8 @@ Scope {
 
     function handleIdleAction(action: var): void {
         if (!action)
+            return;
+        if (root.withinResumeGrace() && root.actionIsSuspend(action))
             return;
         if (root.idleActionNeedsShuffle(action)) {
             QuantumMoon.startInstantThen(() => root.runIdleAction(action));

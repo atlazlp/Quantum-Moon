@@ -15,7 +15,7 @@ Item {
     required property var panels
 
     property var pendingKill: null
-    property bool pointerInside: pickerHover.hovered
+    property bool pointerInside: root.shouldBeActive && pickerHover.hovered
 
     readonly property bool killConfirmOpen: pendingKill !== null && pendingKill !== undefined
 
@@ -39,8 +39,10 @@ Item {
         if (shouldBeActive) {
             visibilities.launcher = false;
             implicitHeight = Qt.binding(() => content.implicitHeight);
+            implicitWidth = Qt.binding(() => content.implicitWidth || 630);
         } else {
             implicitHeight = implicitHeight;
+            implicitWidth = implicitWidth;
             pendingKill = null;
         }
     }
@@ -48,13 +50,15 @@ Item {
     visible: offsetScale < 1
     enabled: root.shouldBeActive || (panels.launcher.offsetScale ?? 0) >= 1
     anchors.bottomMargin: (-implicitHeight - 5) * offsetScale
-
-    HoverHandler {
-        id: pickerHover
-    }
     implicitHeight: content.implicitHeight
     implicitWidth: content.implicitWidth || 630
     opacity: 1 - offsetScale
+
+    HoverHandler {
+        id: pickerHover
+
+        enabled: root.shouldBeActive
+    }
 
     Behavior on offsetScale {
         enabled: !root.launcherUiVisible

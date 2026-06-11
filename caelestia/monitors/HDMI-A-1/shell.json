@@ -3,6 +3,16 @@
         "enabled": false
     },
     "dashboard": {
+        "enabled": false,
+        "showOnHover": false
+    },
+    "launcher": {
+        "showOnHover": false
+    },
+    "utilities": {
         "enabled": false
+    },
+    "quantumMoon": {
+        "showOnHover": false
     }
 }

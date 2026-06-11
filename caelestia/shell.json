@@ -28,6 +28,7 @@
         "shuffleOnIdle": true
     },
     "bar": {
+        "hoverExcludedScreens": ["HDMI-A-1"],
         "excludedScreens": ["HDMI-A-1", "DP-3"],
         "persistent": false,
         "activeWindow": {

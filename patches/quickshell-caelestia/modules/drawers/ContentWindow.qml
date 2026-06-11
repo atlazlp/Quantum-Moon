@@ -39,11 +39,23 @@ StyledWindow {
     readonly property real shadowOpacity: 0.7 * (1 - fsTransitionProg)
     readonly property real borderLayoutThickness: chromeSuppressedFullscreen ? 0 : contentItem.Config.border.thickness
 
+    readonly property bool bottomHoverNeedsPointer: {
+        const cfg = contentItem.Config;
+        if (cfg.utilities?.enabled)
+            return true;
+        if (!cfg.launcher.showOnHover && cfg.launcher.enabled)
+            return true;
+        return false;
+    }
+
     readonly property int dragMaskPadding: {
         if (focusGrab.active || panels.popouts.isDetached || itemEditOpenHere || panels.windowPicker.killConfirmOpen)
             return 0;
 
         if (monitor?.activeWorkspace?.lastIpcObject.windows > 0)
+            return 0;
+
+        if (bottomHoverNeedsPointer)
             return 0;
 
         const thresholds = [];
