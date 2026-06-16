@@ -1,0 +1,13 @@
+[Unit]
+Description=Middle mouse button debounce (200ms)
+Before=keyd.service
+DefaultDependencies=no
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/middle-mouse-debounce
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
