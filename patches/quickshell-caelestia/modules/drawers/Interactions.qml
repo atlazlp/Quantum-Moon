@@ -87,7 +87,7 @@ CustomMouseArea {
             return;
         }
 
-        if (hoverDisabled) {
+        if (hoverDisabled || KvmCapture.active) {
             if (!dashboardShortcutActive)
                 visibilities.dashboard = false;
             if (!quantumMoonShortcutActive)
@@ -98,6 +98,8 @@ CustomMouseArea {
                 visibilities.launcher = false;
             if (!windowPickerShortcutActive)
                 visibilities.windowPicker = false;
+            popouts.hasCurrent = false;
+            bar.closeTray();
             return;
         }
 
@@ -252,7 +254,7 @@ CustomMouseArea {
             utilitiesShortcutActive = false;
         }
 
-        if (!hoverDisabled && !bar.disabled && !Config.launcher.showOnHover && !launcherOpen && x < bar.implicitWidth && inBottomHoverBand(y)) {
+        if (!hoverDisabled && !bar.disabled && x < bar.implicitWidth) {
             bar.checkPopout(y);
         } else if (!launcherPriority && (!popouts.currentName.startsWith("traymenu") || ((popouts.current as StackView)?.depth ?? 0) <= 1) && !inLeftPanel(panels.popoutsWrapper, x, y)) {
             popouts.hasCurrent = false;
