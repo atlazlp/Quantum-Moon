@@ -1,0 +1,13 @@
+[Unit]
+Description=Caelestia suspend/resume watcher (DPMS restore, USB HID rebind, locked-sleep resume grace)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.config/caelestia/scripts/suspend-resume-watch.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
