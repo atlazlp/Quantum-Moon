@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import select
 import signal
 import sys
 import time
@@ -12,21 +11,7 @@ DEVICE = os.environ.get(
     "/dev/input/by-id/usb-E-Signal_USB_Gaming_Mouse-event-mouse",
 )
 DEBOUNCE_MS = int(os.environ.get("MIDDLE_MOUSE_DEBOUNCE_MS", "200"))
-SIDE_DEBOUNCE_MS = int(os.environ.get("SIDE_BUTTON_DEBOUNCE_MS", "80"))
 VIRTUAL_PRODUCT = int(os.environ.get("MIDDLE_MOUSE_VIRTUAL_PRODUCT", "0xA09E"), 0)
-
-# Remap the chattering thumb switches (BTN_SIDE/BTN_EXTRA = mouse4/mouse5) to
-# KEYBOARD keys instead of re-emitting them as mouse buttons. Hyprland 0.55.3+
-# has a regression (PR #14633, modifier-state aggregation across multiple
-# keyboards) that stops *mouse-button* binds from firing, while keyboard-key
-# binds bound by keycode still work. So mouse4 -> F13, mouse5 -> F14, and the
-# Hyprland config binds `code:191` (F13) / `code:192` (F14).
-#   evdev KEY_F13 = 183  -> Hyprland/xkb keycode 191
-#   evdev KEY_F14 = 184  -> Hyprland/xkb keycode 192
-SIDE_MAP = {
-    ecodes.BTN_SIDE: ecodes.KEY_F13,
-    ecodes.BTN_EXTRA: ecodes.KEY_F14,
-}
 
 
 def main() -> None:
@@ -34,16 +19,9 @@ def main() -> None:
     caps = dev.capabilities(absinfo=False)
     # Newer kernels / python-evdev reject EV_SYN codes when creating a UInput
     # device (OSError: [Errno 22] Invalid argument). UInput synthesises SYN
-    # events itself, so strip it from the advertised capabilities.
+    # events itself, so strip it from the advertised capabilities. (This fix is
+    # independent of the Hyprland version and must stay.)
     caps.pop(ecodes.EV_SYN, None)
-    # The side buttons leave via the keyboard device, so don't advertise them
-    # on the pointer device.
-    if ecodes.EV_KEY in caps:
-        caps[ecodes.EV_KEY] = [
-            c for c in caps[ecodes.EV_KEY] if c not in SIDE_MAP
-        ]
-
-    # Pointer device: motion, wheel, left/right/middle (middle debounced).
     ui = UInput(
         events=caps,
         name=f"{dev.name} (debounced)",
@@ -53,28 +31,9 @@ def main() -> None:
         bustype=dev.info.bustype,
         phys="debounced",
     )
-    # Separate keyboard device: emits F13/F14 for the thumb buttons.
-    kb = UInput(
-        events={ecodes.EV_KEY: list(SIDE_MAP.values())},
-        name=f"{dev.name} (side-keys)",
-        vendor=dev.info.vendor,
-        product=0xA09D,
-        version=dev.info.version,
-        bustype=dev.info.bustype,
-        phys="debounced-keys",
-    )
 
-    # Middle button: original double-fire debounce (unchanged behaviour).
     last_press = 0.0
     suppress_release = False
-
-    # Side buttons: hold debounce. A failing thumb switch chatters
-    # (release->press bounce) while held; defer each release by
-    # SIDE_DEBOUNCE_MS and cancel it if a press arrives first, so a hold
-    # reads downstream as one continuous key press instead of a flapping storm.
-    side_s = SIDE_DEBOUNCE_MS / 1000.0
-    side_down = {c: False for c in SIDE_MAP}
-    side_pending: dict[int, float] = {}  # btn code -> monotonic time release seen
 
     def shutdown(*_: object) -> None:
         try:
@@ -88,59 +47,22 @@ def main() -> None:
 
     dev.grab()
     try:
-        while True:
-            timeout = None
-            if side_pending:
+        for event in dev.read_loop():
+            if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_MIDDLE:
                 now = time.monotonic()
-                timeout = max(0.0, min(side_pending.values()) + side_s - now)
-
-            readable, _, _ = select.select([dev.fd], [], [], timeout)
-
-            if readable:
-                for event in dev.read():
-                    code = event.code
-
-                    # --- side buttons (mouse4 / mouse5) -> F13 / F14 keys ---
-                    if event.type == ecodes.EV_KEY and code in side_down:
-                        key = SIDE_MAP[code]
-                        if event.value == 1:  # press
-                            side_pending.pop(code, None)  # cancel bounce release
-                            if not side_down[code]:
-                                side_down[code] = True
-                                kb.write(ecodes.EV_KEY, key, 1)
-                                kb.syn()
-                        elif event.value == 0:  # release
-                            if side_down[code]:
-                                side_pending[code] = time.monotonic()  # defer
+                if event.value == 1:
+                    if (now - last_press) * 1000 < DEBOUNCE_MS:
+                        suppress_release = True
                         continue
+                    last_press = now
+                    suppress_release = False
+                elif event.value == 0 and suppress_release:
+                    suppress_release = False
+                    continue
 
-                    # --- middle button: original double-fire debounce ---
-                    if event.type == ecodes.EV_KEY and code == ecodes.BTN_MIDDLE:
-                        now = time.monotonic()
-                        if event.value == 1:
-                            if (now - last_press) * 1000 < DEBOUNCE_MS:
-                                suppress_release = True
-                                continue
-                            last_press = now
-                            suppress_release = False
-                        elif event.value == 0 and suppress_release:
-                            suppress_release = False
-                            continue
-
-                    # --- everything else: pass through to the pointer device ---
-                    ui.write(event.type, event.code, event.value)
-                    if event.type == ecodes.EV_SYN and code == ecodes.SYN_REPORT:
-                        ui.syn()
-
-            # Fire any deferred side-button releases whose window has elapsed.
-            if side_pending:
-                now = time.monotonic()
-                expired = [c for c, t in side_pending.items() if now - t >= side_s]
-                for code in expired:
-                    del side_pending[code]
-                    side_down[code] = False
-                    kb.write(ecodes.EV_KEY, SIDE_MAP[code], 0)
-                    kb.syn()
+            ui.write(event.type, event.code, event.value)
+            if event.type == ecodes.EV_SYN and event.code == ecodes.SYN_REPORT:
+                ui.syn()
     finally:
         try:
             dev.ungrab()
