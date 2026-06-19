@@ -603,7 +603,7 @@ def _poll() -> dict:
                 stall_min = _age_minutes(last_commit_date)
                 is_owned = _is_owned(pr)
                 is_reviewer = _is_reviewer(pr)
-                last_updated_commit = last_source_commit.get("commitId", "")
+                last_pr_activity = pr.get("lastUpdatedDate", last_source_commit.get("commitId", ""))
                 pr_url = _pr_url(project, repo["name"], pr_id)
 
                 is_approved = any(r.get("vote", 0) >= 5 for r in pr.get("reviewers", []))
@@ -641,10 +641,10 @@ def _poll() -> dict:
                 has_unread_comments = False
                 has_mentions = False
                 prev_updated = _pr_last_updated.get(pr_id)
-                threads_changed = prev_updated != last_updated_commit
+                threads_changed = prev_updated != last_pr_activity
 
                 if threads_changed and (is_owned or is_reviewer):
-                    _pr_last_updated[pr_id] = last_updated_commit
+                    _pr_last_updated[pr_id] = last_pr_activity
                     threads = fetch_pr_threads(project, repo["id"], pr_id)
                     for thread in threads:
                         if thread.get("isDeleted"):
